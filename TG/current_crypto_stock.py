@@ -8,7 +8,6 @@ from functools import wraps
 import psycopg2
 from datetime import datetime
 import json
-import sqlite3
 
 
 BOT_TOKEN = TOKEN_TG
@@ -558,6 +557,10 @@ if __name__ == '__main__':
     
     print("Bot is polling...")
     bot.polling(none_stop=True, timeout=10000)
+
+def get_bybit_data(symbol):
+    
+    bybit_data = get_bybit_data(symbol)
     response_text += "Data from OKX is not available.\n"
 
     if bybit_data:
@@ -616,6 +619,7 @@ def get_bybit_data(symbol):
     except (KeyError, ValueError) as e:
         logger.error(f"Error parsing Bybit data: {e}")
         return None
+
 
 def get_latest_news(asset):
     url = 'https://newsapi.org/v2/everything'
