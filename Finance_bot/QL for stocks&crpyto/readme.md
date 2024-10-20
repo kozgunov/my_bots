@@ -1,39 +1,49 @@
+# Crypto Trading Bot with Deep Q-Learning (PyTorch)
 
-# Crypto Trading Bot with Deep Q-Learning
-
-This project implements a cryptocurrency trading bot using Deep Q-Learning, a reinforcement learning technique that combines Q-learning with deep neural networks. The bot is designed to make trading decisions on hourly cryptocurrency data, considering technical indicators and sentiment analysis.
+This project implements a cryptocurrency trading bot using Deep Q-Learning with PyTorch. The bot is designed to make trading decisions on 10-minute cryptocurrency data, considering technical indicators and market trends. It also includes a Telegram bot interface for user interaction and real-time notifications.
 
 ## Features
 
-- Deep Q-Network (DQN) implementation for trading decisions
-- Support for multiple data sources (crypto and stocks)
-- Technical indicator calculation using TA-Lib
-- Sentiment analysis of news headlines
+- Deep Q-Network (DQN) implementation using PyTorch for trading decisions
+- Support for multiple cryptocurrency exchanges (Binance, OKX, Bybit)
+- Technical indicator calculation and analysis
 - Customizable trading environment with fees and time constraints
 - Data preprocessing and normalization
 - Visualization of training progress and trading results
+- Telegram bot integration for notifications, trading confirmations, and user interactions
+- Real-time market data fetching and analysis
+- News sentiment analysis for informed decision making
+- User data management with PostgreSQL database
+- GPU acceleration support for faster training
+- Improved model architecture with batch normalization and gradient clipping
+- Adaptive learning rate using ReduceLROnPlateau
+- Early stopping to prevent overfitting
+- Comprehensive logging and visualization of training metrics
 
 ## Project Structure
 
-- `main.py`: The main script to run the trading bot
-- `agent.py`: Implementation of the DQN agent
+- `main.py`: The main script to run the trading bot and Telegram interface
+- `agent.py`: Implementation of the DQN agent using PyTorch
 - `environment.py`: Trading environment simulation
-- `utils.py`: Utility functions for data loading and preprocessing
+- `utils.py`: Utility functions for data loading, preprocessing, and API interactions
 - `training.py`: Functions for training and testing the agent
-- `Q-learning.py`: Basic Q-learning implementation (for comparison)
+- `config.py`: Configuration settings for the project
+- `telegram_bot.py`: Telegram bot implementation for user interactions
+- `Q-learning.py`: Basic Q-learning implementation (for reference)
 
 ## Requirements
 
 - Python 3.7+
-- TensorFlow 2.x
+- PyTorch (with CUDA support for GPU acceleration)
 - NumPy
 - Pandas
 - Matplotlib
 - scikit-learn
-- TA-Lib
-- yfinance
 - ccxt
-- TextBlob
+- python-telegram-bot
+- psycopg2
+- requests
+- seaborn
 
 ## Installation
 
@@ -44,27 +54,34 @@ This project implements a cryptocurrency trading bot using Deep Q-Learning, a re
 2. Install the required packages:   ```
    pip install -r requirements.txt   ```
 
-3. Install TA-Lib (follow instructions for your operating system)
+3. Set up your PostgreSQL database and update the connection details in `config.py`.
+
+4. Update the API keys and tokens in `config.py` for the services you plan to use.
 
 ## Usage
 
-1. Configure your desired cryptocurrency and parameters in `main.py`
-2. Run the main script:   ```
+1. Configure your desired cryptocurrency and parameters in `config.py`
+2. Run the training script:   ```
+   python training.py   ```
+3. After training, run the main script to start the bot:   ```
    python main.py   ```
 
-3. The script will train the agent, test it on the most recent data, and generate performance plots.
+4. The script will start the Telegram bot and begin monitoring the market. Users can interact with the bot using the provided commands.
 
 ## Customization
 
-- Adjust the `ImprovedQLearningAgent` parameters in `agent.py` to modify the learning process
+- Adjust the `ImprovedAgent` parameters in `agent.py` to modify the learning process
 - Customize the trading environment in `environment.py` to add more complex trading rules
 - Add or remove technical indicators in the `add_technical_indicators` function in `utils.py`
+- Modify the Telegram bot commands and responses in `main.py` to suit your needs
 
 ## Results
 
-The bot generates two main output files:
-- `training_results.png`: Shows the training progress, including rewards and epsilon decay
-- `trading_results.png`: Displays the bot's trading actions and portfolio value over time
+The bot generates performance plots and sends trading notifications through the Telegram interface. You can also view the training progress and trading results in the console output and in the `results` folder on your desktop.
+
+## GPU Acceleration
+
+This project supports GPU acceleration for faster training. Make sure you have CUDA installed and configured properly. The script will automatically use GPU if available.
 
 ## Disclaimer
 
