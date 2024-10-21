@@ -1,143 +1,177 @@
+import threading
 from environment import TradingEnvironment
 from agent import ImprovedQLearningAgent
-from training import train_agent, test_agent
-from utils import load_real_data, load_and_prepare_data, get_sentiment_scores
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.optimizers import Adam
-from xgboost import XGBRegressor
-from fbprophet import Prophet
-from bayes_opt import BayesianOptimization
-from sklearn.metrics import mean_squared_error
-from sklearn.feature_selection import SelectKBest, f_regression
+from utils import prepare_data, create_sequences, get_crypto_info, get_latest_news
+from config import *
+import telebot
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 import matplotlib.pyplot as plt
+import io
+import numpy as np
+import os
+import logging
 
-def create_sequences(data, seq_length):
-    xs, ys = [], []
-    for i in range(len(data) - seq_length):
-        x = data[i:(i + seq_length)]
-        y = data[i + seq_length]
-        xs.append(x)
-        ys.append(y)
-    return np.array(xs), np.array(ys)
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-def build_lstm_model(input_shape):
-    model = Sequential([
-        LSTM(50, activation='relu', input_shape=input_shape, return_sequences=True),
-        Dropout(0.2),
-        LSTM(50, activation='relu', return_sequences=False),
-        Dropout(0.2),
-        Dense(1)
-    ])
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mse')
-    return model
+bot = telebot.TeleBot(TOKEN_TG)
 
-def optimize_xgboost(X, y):
-    def xgb_evaluate(max_depth, learning_rate, n_estimators, min_child_weight, subsample, colsample_bytree):
-        params = {
-            'max_depth': int(max_depth),
-            'learning_rate': learning_rate,
-            'n_estimators': int(n_estimators),
-            'min_child_weight': min_child_weight,
-            'subsample': subsample,
-            'colsample_bytree': colsample_bytree
-        }
-        model = XGBRegressor(**params)
-        model.fit(X, y)
-        predictions = model.predict(X)
-        return -mean_squared_error(y, predictions)
+def create_main_keyboard():
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.row(
+        KeyboardButton("Show Current Stocks"),
+        KeyboardButton("Show Current Crypto")
+    )
+    keyboard.row(
+        KeyboardButton("Get My Data"),
+        KeyboardButton("Remove My Data")
+    )
+    keyboard.row(
+        KeyboardButton("Predict Crypto Market"),
+        KeyboardButton("Free Subscription")
+    )
+    keyboard.row(KeyboardButton("Non-free Subscription"))
+    return keyboard
 
-    pbounds = {
-        'max_depth': (3, 10),
-        'learning_rate': (0.01, 0.3),
-        'n_estimators': (100, 1000),
-        'min_child_weight': (1, 10),
-        'subsample': (0.5, 1.0),
-        'colsample_bytree': (0.5, 1.0)
-    }
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    try:
+        help_text = (
+            "Welcome to the Crypto Trading Bot! Here are the commands you can use:\n"
+            "/help - Show this help message\n"
+            "/predict - Predict crypto market\n"
+            "/free_subscription - Get free subscription\n"
+            "/non_free_subscription - Get non-free subscription\n"
+        )
+        bot.send_message(message.chat.id, help_text, reply_markup=create_main_keyboard())
+    except Exception as e:
+        logger.error(f"Error in send_welcome: {e}")
+        bot.send_message(message.chat.id, "An error occurred. Please try again later.")
 
-    optimizer = BayesianOptimization(f=xgb_evaluate, pbounds=pbounds, random_state=1)
-    optimizer.maximize(init_points=5, n_iter=25)
+@bot.message_handler(func=lambda message: message.text == "Predict Crypto Market")
+@bot.message_handler(commands=['predict'])
+def predict_crypto_market(message):
+    try:
+        bot.send_message(message.chat.id, "Preparing to make a prediction. This may take a moment...")
 
-    return optimizer.max
+        # Load and prepare data
+        df, scaler = prepare_data('binance', SYMBOL, timeframe=TIMEFRAME, limit=DATA_LIMIT)
+        
+        if df is None:
+            bot.send_message(message.chat.id, "Failed to load data. Please try again later.")
+            return
+
+        # Create sequences
+        seq_length = 24  # 24 hours of data
+        X, y = create_sequences(df, seq_length)
+        y = y[:, df.columns.get_loc('close')]
+
+        # Use the last sequence for prediction
+        last_sequence = X[-1:]
+
+        # Create environment and agent
+        env = TradingEnvironment(y[-60:], initial_balance=INITIAL_BALANCE, fee=TRADING_FEE)  # Use last 60 points for visualization
+        agent = ImprovedQLearningAgent(state_size=X.shape[1] * X.shape[2] + 2, action_size=3)
+
+        # Load the trained model
+        if os.path.exists("best_model.pth"):
+            agent.load("best_model.pth")
+        else:
+            bot.send_message(message.chat.id, "Trained model not found. Please train the model first.")
+            return
+
+        # Make prediction
+        state = env.reset()
+        action = agent.get_action(last_sequence)
+        prediction = "Buy" if action == 1 else "Sell" if action == 2 else "Hold"
+
+        # Plot 1-hour graph of Bitcoin
+        plt.figure(figsize=(10, 6))
+        plt.plot(df.index[-60:], df['close'][-60:])
+        plt.title("Bitcoin Price (Last 60 Hours)")
+        plt.xlabel("Time")
+        plt.ylabel("Price")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png')
+        img_buffer.seek(0)
+        
+        # Send the plot
+        bot.send_photo(message.chat.id, img_buffer)
+
+        # Send prediction
+        bot.send_message(message.chat.id, f"Prediction: {prediction}")
+
+        # Get latest news
+        news = get_latest_news("Bitcoin")
+        bot.send_message(message.chat.id, news, parse_mode='Markdown')
+
+        # Get general indicator data
+        crypto_info = get_crypto_info("BTC")
+        bot.send_message(message.chat.id, crypto_info, parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Error in predict_crypto_market: {e}")
+        bot.send_message(message.chat.id, "An error occurred while making the prediction. Please try again later.")
+
+@bot.message_handler(func=lambda message: message.text == "Free Subscription")
+@bot.message_handler(commands=['free_subscription'])
+def free_subscription(message):
+    try:
+        bot.send_message(message.chat.id, "Hello, world!")
+    except Exception as e:
+        logger.error(f"Error in free_subscription: {e}")
+        bot.send_message(message.chat.id, "An error occurred. Please try again later.")
+
+@bot.message_handler(func=lambda message: message.text == "Non-free Subscription")
+@bot.message_handler(commands=['non_free_subscription'])
+def non_free_subscription(message):
+    try:
+        bot.send_message(message.chat.id, "Hello, world!")
+    except Exception as e:
+        logger.error(f"Error in non_free_subscription: {e}")
+        bot.send_message(message.chat.id, "An error occurred. Please try again later.")
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    try:
+        if message.text == "Show Current Stocks":
+            bot.send_message(message.chat.id, "Current stock information is not available in this demo.")
+        elif message.text == "Show Current Crypto":
+            crypto_info = get_crypto_info("BTC")
+            bot.send_message(message.chat.id, crypto_info, parse_mode='Markdown')
+        elif message.text == "Get My Data":
+            bot.send_message(message.chat.id, "User data retrieval is not implemented in this demo.")
+        elif message.text == "Remove My Data":
+            bot.send_message(message.chat.id, "User data removal is not implemented in this demo.")
+        else:
+            bot.send_message(message.chat.id, "I don't understand that command. Please use the keyboard or type /help for available commands.")
+    except Exception as e:
+        logger.error(f"Error in handle_message: {e}")
+        bot.send_message(message.chat.id, "An error occurred. Please try again later.")
+
+def start_bot():
+    try:
+        bot.polling(none_stop=True)
+    except Exception as e:
+        logger.error(f"Error in bot polling: {e}")
 
 def main():
-    # Load and prepare hourly data
-    df, scaler = load_and_prepare_data('BTC-USD', period="60d", interval="1h")
-    
-    if df is None:
-        print("Failed to load data. Exiting.")
-        return
+    try:
+        # Start the Telegram bot in a separate thread
+        bot_thread = threading.Thread(target=start_bot)
+        bot_thread.start()
 
-    # Add sentiment scores (you might need to adjust this for hourly data)
-    df['Sentiment'] = get_sentiment_scores('BTC-USD', df.index)
+        logger.info("Bot is running. Press CTRL+C to stop.")
 
-    # Prepare features
-    features = ['Close', 'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal', 'Returns', 'Sentiment']
-    X = df[features].values
-    y = df['Close'].values
-
-    # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Create environment and agent
-    env = TradingEnvironment(y_test)
-    agent = ImprovedQLearningAgent(state_size=4, action_size=3)  # 3 actions: hold, buy, sell
-
-    # Training
-    episodes = 1000
-    batch_size = 32
-    for episode in range(episodes):
-        state = env.reset()
-        total_reward = 0
-        done = False
-
-        while not done:
-            action = agent.get_action(np.array([state]))
-            next_state, reward, done = env.step(action)
-            agent.remember(state, action, reward, next_state, done)
-            state = next_state
-            total_reward += reward
-
-            if len(agent.memory) > batch_size:
-                agent.replay(batch_size)
-
-        if episode % 10 == 0:
-            print(f"Episode: {episode}, Total Reward: {total_reward}, Epsilon: {agent.epsilon:.2f}")
-
-    # Testing
-    state = env.reset()
-    total_reward = 0
-    done = False
-    actions = []
-
-    while not done:
-        action = agent.get_action(np.array([state]))
-        next_state, reward, done = env.step(action)
-        state = next_state
-        total_reward += reward
-        actions.append(action)
-
-    print(f"Final balance: {env.balance:.2f}")
-    print(f"Total reward: {total_reward:.2f}")
-
-    # Plotting results
-    plt.figure(figsize=(12, 6))
-    plt.plot(y_test, label='Bitcoin Price')
-    buy_points = [i for i, a in enumerate(actions) if a == 1]
-    sell_points = [i for i, a in enumerate(actions) if a == 2]
-    plt.scatter(buy_points, y_test[buy_points], color='green', label='Buy', marker='^')
-    plt.scatter(sell_points, y_test[sell_points], color='red', label='Sell', marker='v')
-    plt.xlabel('Hours')
-    plt.ylabel('Price')
-    plt.title('Bitcoin Trading Bot Actions')
-    plt.legend()
-    plt.savefig('trading_results.png')
-    plt.close()
+        bot_thread.join()
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user.")
+    except Exception as e:
+        logger.error(f"Unexpected error in main: {e}")
 
 if __name__ == "__main__":
     main()
