@@ -1,0 +1,9 @@
+sharpe_ratio: 1.3206
+max_drawdown: 0.2475
+total_return: 2188.4796
+win_rate: 0.0362
+weighted_win_rate: 0.9435
+profit_factor: 16.6850
+avg_profit_per_trade: 73.3235
+risk_reward_ratio: 212.7010
+Total Early Terminations: 1
