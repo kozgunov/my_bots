@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 import requests
 import os
-from config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+from config import BINANCE_API_KEY
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,6 +23,10 @@ LIMIT = 365 * 24 * 4 * 4  # 4 years * 365 days * 24 hours * 4 (15-minute interva
 
 # Get the path to the desktop
 DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
+RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
+
+# Create the training_results folder if it doesn't exist
+os.makedirs(RESULTS_PATH, exist_ok=True)
 
 def fetch_and_process_data(symbol):
     logger.info(f"Fetching data for {symbol}...")
@@ -83,9 +87,9 @@ def fetch_and_process_data(symbol):
 
 def save_to_json(data, filename):
     try:
-        filepath = os.path.join(DESKTOP_PATH, filename)
+        filepath = os.path.join(RESULTS_PATH, filename)
         with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f)
         logger.info(f"Successfully saved data to {filepath}")
     except Exception as e:
         logger.error(f"Error saving data to {filepath}: {e}")
