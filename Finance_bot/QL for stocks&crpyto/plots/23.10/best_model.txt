@@ -1,0 +1,5 @@
+__main__ - INFO - Episode 200/200 - Time: 60.01s, Reward: 251.13, Steps: 2395, Trades: 2531, Win Rate: 0.95
+__main__ - INFO - Training completed
+__main__ - INFO - Best score: 406.41
+__main__ - INFO - Best loss: 0.000004
+__main__ - INFO - Final model saved
