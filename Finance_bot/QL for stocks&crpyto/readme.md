@@ -94,3 +94,115 @@ Contributions, issues, and feature requests are welcome. Feel free to check [iss
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+
+
+
+# Cryptocurrency Trading Bot with Q-Learning
+
+## Overview
+This project implements a cryptocurrency trading bot using reinforcement learning techniques, specifically Q-learning with a Deep Q-Network (DQN). The bot is trained on historical cryptocurrency data and can make trading decisions (buy, sell, or hold) based on market conditions.
+
+## Key Components
+
+1. Data Collection (`database_parser.py`)
+   - Fetches historical data for 10 popular cryptocurrencies from the Binance API
+   - Processes and saves data in JSON format
+   - Stores data for each coin individually and combined in the "training_results" folder
+
+2. Trading Environment (`environment.py`)
+   - Simulates a trading environment with account balance, positions, and trades
+   - Implements trading logic including fees and risk management
+   - Provides state representation and calculates rewards
+
+3. Reinforcement Learning Agent (`agent.py`)
+   - Implements an Improved Q-Learning Agent with a Dueling DQN architecture
+   - Uses Prioritized Experience Replay for efficient learning
+   - Implements epsilon-greedy exploration strategy
+
+4. Training Process (`training.py`)
+   - Manages the overall training loop for each cryptocurrency
+   - Implements early stopping and model checkpointing
+   - Generates performance plots and logs training progress
+
+## Training Process in Detail
+
+1. Data Preparation
+   - Loads all cryptocurrency data from the "all_coins_data.json" file
+   - Splits data into training (60%), validation (20%), and testing (20%) sets for each coin
+   - Sorts data chronologically to maintain time series integrity
+
+2. Environment and Agent Initialization
+   - Creates separate TradingEnvironment instances for training, validation, and testing
+   - Initializes the ImprovedQLearningAgent with state and action sizes based on the environment
+
+3. Training Loop
+   - Runs for a maximum of 200 episodes or until early stopping criteria are met
+   - Each episode is limited to 1 minute of training time
+
+4. Episode Structure
+   - Resets the environment at the start of each episode
+   - Agent takes actions based on the current state
+   - Environment returns next state, reward, and done flag
+   - Experiences are stored in the agent's replay memory
+
+5. Learning Process
+   - Agent performs experience replay at each step
+   - Updates Q-values and adjusts network weights
+   - Target network is updated periodically for stability
+
+6. Performance Tracking
+   - Tracks total reward, number of trades, weighted win rate, and average loss per episode
+   - Logs detailed metrics after each episode
+
+7. Model Saving
+   - Saves the best model based on highest score: "model_best_score_{episode}.pth"
+   - Saves the best model based on lowest loss: "model_best_loss_{episode}.pth"
+   - Creates periodic checkpoints: "model_checkpoint_{episode}.pth"
+   - Saves the final model after training: "model_final.pth"
+
+8. Early Stopping
+   - Monitors the average loss over episodes
+   - Stops training if no improvement is seen for 50 consecutive episodes
+
+9. Performance Visualization
+   - Generates plots for scores, steps per episode, win rates, losses, and epsilon decay
+   - Saves plots periodically and at the end of training
+
+10. Model Explanation
+    - Attempts to generate SHAP (SHapley Additive exPlanations) values for model interpretability
+    - Creates a summary plot of feature importance if successful
+
+11. Evaluation
+    - Evaluates the trained model on both validation and test datasets
+    - Calculates and logs the mean and standard deviation of scores for each dataset
+
+## Key Training Parameters
+- Episodes: 200 (maximum)
+- Batch Size: 64
+- Learning Rate: 0.0003 (defined in config.py)
+- Discount Factor (Gamma): 0.99 (defined in config.py)
+- Epsilon: Starts at 1.0, decays by 0.995 after each step, minimum 0.05
+- Memory Size: 50000 experiences (defined in config.py)
+- Early Stopping Patience: 50 episodes
+
+## Output and Results
+All training outputs are saved in the "training_results" folder on the desktop, including:
+- Trained models (best score, best loss, checkpoints, and final)
+- Performance plots (scores, steps, win rates, losses, epsilon decay)
+- SHAP summary plot (if successful)
+- Detailed logs of the training process
+
+## Usage
+1. Run `database_parser.py` to collect and save historical data
+2. Execute `training.py` to train the agent on the collected data
+3. Use `main.py` to start the Telegram bot and interact with the trained model
+
+Note: Ensure all required libraries are installed and API keys are properly set in `config.py` before running the scripts.
+
+## Future Improvements
+- Implement more sophisticated reward functions
+- Explore different network architectures for the DQN
+- Incorporate additional features or technical indicators in the state representation
+- Implement ensemble methods or multi-agent systems for more robust trading strategies
