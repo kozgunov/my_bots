@@ -1,0 +1,543 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from environment import TradingEnvironment
+from agent import ImprovedQLearningAgent
+from utils import calculate_sharpe_ratio, calculate_max_drawdown, calculate_profit_factor
+from config import *
+from sklearn.model_selection import train_test_split
+import torch
+import os
+import pandas as pd
+import seaborn as sns
+import logging
+import shap
+import json
+import time
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Get the path to the desktop
+DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
+RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
+
+# Create the training_results folder if it doesn't exist
+os.makedirs(RESULTS_PATH, exist_ok=True)
+
+def load_json_data(file_path, chunk_size=100000):
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    
+    if not isinstance(data, list):
+        raise ValueError("JSON file should contain a list of objects")
+    
+    for i in range(0, len(data), chunk_size):
+        yield pd.DataFrame(data[i:i+chunk_size])
+
+def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, patience=50):
+    logger.debug("Starting train_agent function")
+    best_score = -np.inf
+    best_loss = float('inf')
+    scores = []
+    steps_per_episode = []
+    weighted_win_rates = []
+    losses = []
+    epsilons = []
+    no_improvement_count = 0
+    training_losses = []  # New list to store all training losses
+
+    action_counts = {0: 0, 1: 0, 2: 0, 3: 0}  # Hold, Buy, Sell, Risk-free
+    profits = []
+    portfolio_values = []
+
+    logger.info(f"Starting training for {episodes} episodes")
+
+    # Metrics that influence training
+    training_metrics = {
+        'rewards': [],
+        'losses': [],
+        'epsilons': []
+    }
+    
+    # Metrics that don't directly influence training
+    evaluation_metrics = {
+        'win_rates': [],
+        'sharpe_ratios': [],
+        'max_drawdowns': [],
+        'profit_factors': []
+    }
+    
+    hyperparameters = {
+        'learning_rate': agent.learning_rate,
+        'gamma': agent.gamma,
+        'epsilon_start': agent.epsilon,
+        'epsilon_end': agent.epsilon_end,
+        'epsilon_decay_steps': agent.epsilon_decay_steps,
+        'batch_size': batch_size
+    }
+    
+    for episode in range(episodes):
+        logger.debug(f"Starting episode {episode+1}")
+        start_time = time.time()
+        state = env.reset()
+        done = False
+        episode_reward = 0
+        episode_steps = 0
+        episode_trades = 0
+        episode_wins = 0
+        episode_losses = []
+        total_profit = 0
+
+        episode_actions = []
+        episode_portfolio_values = []
+        episode_volumes = []
+
+        while not done and time.time() - start_time < 60:  # 1 minute time limit
+            action = agent.act(state)
+            logger.debug(f"Action taken: {action}")
+            next_state, reward, done, info = env.step(action)
+            logger.debug(f"Reward: {reward}, Done: {done}")
+            agent.remember(state, action, reward, next_state, done)
+            state = next_state
+            episode_reward += reward
+            episode_steps += 1
+
+            if info['trade_made']:
+                episode_trades += 1
+                if reward > 0:
+                    episode_wins += 1
+                    total_profit += reward
+                elif reward < 0:
+                    total_profit += reward
+
+            loss = agent.replay(episode * 10000 + episode_steps)
+            if loss is not None:
+                episode_losses.append(loss)
+                training_losses.append(loss)  # Add loss to training_losses
+
+            action_counts[action] += 1
+            episode_actions.append(action)
+            episode_portfolio_values.append(info['balance'] + info['position'] * info['current_price'])
+            episode_volumes.append(info['current_volume'])  # Assume 'current_volume' is provided in info
+
+        # Decay epsilon after each episode
+        agent.decay_epsilon()
+
+        # Calculate episode metrics
+        weighted_win_rate = total_profit / episode_trades if episode_trades > 0 else 0
+        win_rate = episode_wins / episode_trades if episode_trades > 0 else 0
+        
+        scores.append(episode_reward)
+        steps_per_episode.append(episode_steps)
+        weighted_win_rates.append(weighted_win_rate)
+        epsilons.append(agent.epsilon)
+        avg_loss = np.mean(episode_losses) if episode_losses else float('inf')
+        losses.append(avg_loss)
+
+        # Log episode summary
+        logger.info(f"Episode {episode+1}/{episodes} - Time: {time.time() - start_time:.2f}s, "
+                    f"Reward: {episode_reward:.2f}, Steps: {episode_steps}, "
+                    f"Trades: {episode_trades}, Win Rate: {win_rate:.2f}, "
+                    f"Weighted Win Rate: {weighted_win_rate:.2f}, "
+                    f"Avg Loss: {avg_loss:.6f}, Epsilon: {agent.epsilon:.4f}")
+
+        # Check for improvement and save best model
+        if episode_reward > best_score:
+            best_score = episode_reward
+            agent.save(os.path.join(RESULTS_PATH, f"model_best_score_{episode}.pth"))
+            logger.info(f"New best model (score) saved at episode {episode+1}")
+        
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            no_improvement_count = 0
+            agent.save(os.path.join(RESULTS_PATH, f"model_best_loss_{episode}.pth"))
+            logger.info(f"New best model (loss) saved at episode {episode+1}")
+        else:
+            no_improvement_count += 1
+
+        # Save checkpoint and plot results
+        if episode % checkpoint_interval == 0 or episode == episodes - 1:
+            agent.save(os.path.join(RESULTS_PATH, f"model_checkpoint_{episode}.pth"))
+            plot_training_results(scores, steps_per_episode, weighted_win_rates, losses, epsilons, episode)
+            plot_episode_results(episode_actions, episode_portfolio_values, episode_volumes, episode)
+            logger.info(f"Checkpoint saved and plots generated at episode {episode+1}")
+
+        # Early stopping
+        if no_improvement_count >= patience:
+            logger.info(f"Stopping early due to no improvement in loss for {patience} episodes")
+            break
+
+        logger.debug(f"Episode {episode+1} completed. Total reward: {episode_reward}")
+
+        # Update training metrics
+        training_metrics['rewards'].append(episode_reward)
+        training_metrics['losses'].append(avg_loss)
+        training_metrics['epsilons'].append(agent.epsilon)
+        
+        # Calculate and update evaluation metrics
+        evaluation_metrics['win_rates'].append(win_rate)
+        evaluation_metrics['sharpe_ratios'].append(calculate_sharpe_ratio(profits))
+        evaluation_metrics['max_drawdowns'].append(calculate_max_drawdown(episode_portfolio_values))
+        evaluation_metrics['profit_factors'].append(calculate_profit_factor(profits))
+
+    # Create 3D plot
+    plot_3d_metrics(range(episodes), training_metrics['rewards'], evaluation_metrics['win_rates'], training_metrics['losses'], 'All_Episodes')
+    
+    # Plot hyperparameters
+    plot_hyperparameters(hyperparameters)
+    
+    # Plot training and evaluation metrics
+    plot_metrics(training_metrics, 'Training_Metrics')
+    plot_metrics(evaluation_metrics, 'Evaluation_Metrics')
+    
+    logger.debug("train_agent function completed")
+    return agent, training_losses, training_metrics, evaluation_metrics, hyperparameters
+
+def evaluate_agent(env, agent, episodes=100):
+    scores = []
+    for episode in range(episodes):
+        state = env.reset()
+        done = False
+        score = 0
+        while not done:
+            action = agent.act(state)
+            next_state, reward, done, _ = env.step(action)
+            state = next_state
+            score += reward
+        scores.append(score)
+    return np.mean(scores), np.std(scores)
+
+def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
+    plt.figure(figsize=(20, 15))
+    
+    # Plot scores
+    plt.subplot(2, 2, 1)
+    plt.plot(scores)
+    plt.title('Score over episodes', fontsize=16)
+    plt.xlabel('Episode', fontsize=12)
+    plt.ylabel('Score', fontsize=12)
+
+    # Plot steps per episode
+    plt.subplot(2, 2, 2)
+    plt.plot(steps)
+    plt.title('Steps per episode', fontsize=16)
+    plt.xlabel('Episode', fontsize=12)
+    plt.ylabel('Steps', fontsize=12)
+
+    # Plot weighted win rates
+    plt.subplot(2, 2, 3)
+    plt.plot(win_rates)
+    plt.title('Weighted Win Rate', fontsize=16)
+    plt.xlabel('Episode', fontsize=12)
+    plt.ylabel('Win Rate', fontsize=12)
+
+    # Plot losses
+    if losses:
+        plt.subplot(2, 2, 4)
+        plt.plot(losses)
+        plt.title('Loss over training steps', fontsize=16)
+        plt.xlabel('Training step', fontsize=12)
+        plt.ylabel('Loss', fontsize=12)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_PATH, f"training_results_{episode}.png"))
+    plt.close()
+
+    # 3D plot
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    scatter = ax.scatter(scores, win_rates, losses, c=epsilons, cmap='viridis')
+    ax.set_xlabel('Scores')
+    ax.set_ylabel('Win Rates')
+    ax.set_zlabel('Losses')
+    plt.title('3D Visualization of Training Progress', fontsize=16)
+    plt.colorbar(scatter, label='Epsilon')
+    plt.savefig(os.path.join(RESULTS_PATH, f"3d_training_progress_{episode}.png"))
+    plt.close()
+
+def explain_model(model, env):
+    try:
+        # Create a batch of initial states
+        initial_states = [env.reset() for _ in range(100)]
+        
+        # Convert the list of states to a numpy array
+        initial_states_array = np.array(initial_states)
+        
+        # Convert numpy array to torch tensor
+        initial_states_tensor = torch.FloatTensor(initial_states_array).to(model.device)
+        
+        # Create SHAP explainer
+        explainer = shap.DeepExplainer(model, initial_states_tensor)
+        
+        # Generate SHAP values
+        shap_values = explainer.shap_values(initial_states_tensor[0:1])
+        
+        # Create and save summary plot
+        shap.summary_plot(shap_values, initial_states_tensor[0:1], 
+                          feature_names=['Balance', 'Position', 'Price', 'Volume', 'Profit/Loss'],
+                          show=False)
+        plt.savefig(os.path.join(RESULTS_PATH, "shap_summary.png"))
+        plt.close()
+        
+        logger.info("SHAP explanation generated and saved successfully.")
+    except Exception as e:
+        logger.error(f"Error in generating SHAP explanation: {e}")
+        logger.info("Skipping SHAP explanation due to error.")
+
+def load_all_coins_data(file_path):
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    return pd.DataFrame(data)
+
+def evaluate_agent_with_losses(env, agent, episodes=100):
+    scores = []
+    test_losses = []
+    for episode in range(episodes):
+        state = env.reset()
+        done = False
+        score = 0
+        while not done:
+            action = agent.act(state)
+            next_state, reward, done, _ = env.step(action)
+            loss = agent.calculate_loss(state, action, reward, next_state, done)
+            test_losses.append(loss)
+            state = next_state
+            score += reward
+        scores.append(score)
+    return np.mean(scores), np.std(scores), test_losses
+
+def plot_loss_graphs(training_losses, test_losses, coin):
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(len(training_losses)), training_losses, label='Training Loss')
+    plt.plot(range(len(test_losses)), test_losses, label='Testing Loss')
+    plt.title(f'Loss Function for {coin}')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.savefig(os.path.join(RESULTS_PATH, f"loss_graph_{coin}.png"))
+    plt.close()
+
+def plot_episode_results(actions, portfolio_values, volumes, episode):
+    plt.figure(figsize=(20, 15))
+    
+    # Portfolio Value
+    plt.subplot(3, 1, 1)
+    sns.lineplot(x=range(len(portfolio_values)), y=portfolio_values, color='blue')
+    plt.title(f'Portfolio Value - Episode {episode}', fontsize=16)
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Portfolio Value', fontsize=12)
+    max_value_step = np.argmax(portfolio_values)
+    plt.scatter(max_value_step, portfolio_values[max_value_step], color='red', s=100, zorder=5)
+    plt.annotate(f'Max: {portfolio_values[max_value_step]:.2f}', 
+                 (max_value_step, portfolio_values[max_value_step]), 
+                 xytext=(5, 5), textcoords='offset points')
+
+    # Actions
+    plt.subplot(3, 1, 2)
+    action_labels = ['Hold', 'Buy', 'Sell', 'Risk-free']
+    colors = ['gray', 'green', 'red', 'blue']
+    for i, action in enumerate(action_labels):
+        action_points = [j for j, a in enumerate(actions) if a == i]
+        plt.scatter(action_points, [portfolio_values[j] for j in action_points], 
+                    color=colors[i], label=action, alpha=0.6)
+    plt.title(f'Actions - Episode {episode}', fontsize=16)
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Portfolio Value', fontsize=12)
+    plt.legend(fontsize=10)
+
+    # Trading Volume
+    plt.subplot(3, 1, 3)
+    sns.lineplot(x=range(len(volumes)), y=volumes, color='purple')
+    plt.title(f'Trading Volume - Episode {episode}', fontsize=16)
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Volume', fontsize=12)
+    max_volume_step = np.argmax(volumes)
+    plt.scatter(max_volume_step, volumes[max_volume_step], color='red', s=100, zorder=5)
+    plt.annotate(f'Max: {volumes[max_volume_step]:.2f}', 
+                 (max_volume_step, volumes[max_volume_step]), 
+                 xytext=(5, 5), textcoords='offset points')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_PATH, f"episode_results_{episode}.png"))
+    plt.close()
+
+def plot_additional_metrics(profits, portfolio_values):
+    # Calculate metrics
+    sharpe_ratio = calculate_sharpe_ratio(profits)
+    avg_profit_per_trade = np.mean(profits)
+    max_drawdown = calculate_max_drawdown(portfolio_values)
+    profit_factor = calculate_profit_factor(profits)
+    risk_factor = max_drawdown / (np.std(profits) + 1e-10)  # Adding small value to avoid division by zero
+
+    # Plot metrics
+    metrics = ['Sharpe Ratio', 'Avg Profit/Trade', 'Max Drawdown', 'Profit Factor', 'Risk Factor']
+    values = [sharpe_ratio, avg_profit_per_trade, max_drawdown, profit_factor, risk_factor]
+
+    plt.figure(figsize=(12, 6))
+    plt.bar(metrics, values)
+    plt.title('Trading Metrics')
+    plt.ylabel('Value')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_PATH, "trading_metrics.png"))
+    plt.close()
+
+    # Log metrics
+    logger.info(f"Sharpe Ratio: {sharpe_ratio:.2f}")
+    logger.info(f"Average Profit per Trade: {avg_profit_per_trade:.2f}")
+    logger.info(f"Maximum Drawdown: {max_drawdown:.2f}")
+    logger.info(f"Profit Factor: {profit_factor:.2f}")
+    logger.info(f"Risk Factor: {risk_factor:.2f}")
+
+def plot_3d_metrics(episodes, rewards, win_rates, losses, coin):
+    if len(episodes) != len(rewards) or len(episodes) != len(win_rates) or len(episodes) != len(losses):
+        logger.error("Mismatch in data lengths for 3D plot. Skipping plot generation.")
+        return
+
+    fig = plt.figure(figsize=(15, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Ensure all inputs are numpy arrays and have the same length
+    episodes = np.array(episodes)
+    rewards = np.array(rewards)
+    win_rates = np.array(win_rates)
+    losses = np.array(losses)
+    
+    min_length = min(len(episodes), len(rewards), len(win_rates), len(losses))
+    episodes = episodes[:min_length]
+    rewards = rewards[:min_length]
+    win_rates = win_rates[:min_length]
+    losses = losses[:min_length]
+    
+    scatter = ax.scatter(rewards, win_rates, losses, c=episodes, cmap='viridis')
+    
+    ax.set_xlabel('Rewards')
+    ax.set_ylabel('Win Rates')
+    ax.set_zlabel('Losses')
+    
+    plt.colorbar(scatter, label='Episodes')
+    plt.title(f'3D Visualization of Key Metrics for {coin}')
+    
+    plt.savefig(os.path.join(RESULTS_PATH, f"3d_metrics_{coin}.png"))
+    plt.close()
+
+def plot_hyperparameters(hyperparameters):
+    plt.figure(figsize=(12, 6))
+    plt.bar(hyperparameters.keys(), hyperparameters.values())
+    plt.title('Hyperparameters')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_PATH, "hyperparameters.png"))
+    plt.close()
+
+def plot_metrics(metrics, title):
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle(title)
+    
+    for (key, values), ax in zip(metrics.items(), axes.ravel()):
+        ax.plot(values)
+        ax.set_title(key)
+        ax.set_xlabel('Episodes')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_PATH, f"{title.lower()}.png"))
+    plt.close()
+
+if __name__ == "__main__":
+    all_coins_file = os.path.join(DESKTOP_PATH, "all_coins_data.json")
+    
+    if not os.path.exists(all_coins_file):
+        logger.error(f"File not found: {all_coins_file}")
+        exit(1)
+
+    # Load all data at once
+    all_data = load_all_coins_data(all_coins_file)
+    logger.info(f"Loaded {len(all_data)} total records for all coins")
+
+    for coin in ['BTC', 'ETH', 'BNB', 'ADA', 'XRP', 'DOT', 'UNI', 'LTC', 'LINK', 'SOL']:
+        try:
+            logger.info(f"Processing data for {coin}")
+            
+            # Filter data for the current coin
+            coin_data = all_data[all_data['coin'] == coin]
+            
+            if len(coin_data) == 0:
+                logger.warning(f"No data found for {coin}. Skipping...")
+                continue
+
+            logger.info(f"Processing {len(coin_data)} records for {coin}")
+
+            # Sort data by timestamp
+            coin_data = coin_data.sort_values('timestamp')
+
+            # Split data
+            train_data, temp_data = train_test_split(coin_data, test_size=0.4, shuffle=False)
+            val_data, test_data = train_test_split(temp_data, test_size=0.5, shuffle=False)
+
+            # Create environments
+            train_env = TradingEnvironment(train_data.to_dict('records'))
+            val_env = TradingEnvironment(val_data.to_dict('records'))
+            test_env = TradingEnvironment(test_data.to_dict('records'))
+
+            # Initialize and train agent
+            state_size = train_env._get_state().shape[0]
+            action_size = 4  # hold, buy, sell, risk-free
+            agent = ImprovedQLearningAgent(state_size=state_size, action_size=action_size,
+                                           learning_rate=0.0001, batch_size=32,
+                                           epsilon_start=1.0, epsilon_end=0.01, epsilon_decay_steps=100)
+            trained_agent, training_losses, training_metrics, evaluation_metrics, hyperparameters = train_agent(train_env, agent, episodes=130, batch_size=64)
+
+            # Evaluate agent
+            test_score, test_std, test_losses = evaluate_agent_with_losses(test_env, trained_agent)
+            logger.info(f"Test Score for {coin}: {test_score:.2f} ± {test_std:.2f}")
+
+            # Plot loss graphs
+            plot_loss_graphs(training_losses, test_losses, coin)
+
+            # Save model
+            trained_agent.save(os.path.join(RESULTS_PATH, f"model_{coin}.pth"))
+
+            # Explain model
+            explain_model(trained_agent.model, test_env)
+
+            # Log final metrics
+            final_metrics = trained_agent.calculate_metrics()
+            logger.info(f"Final metrics for {coin}:")
+            logger.info(f"Total trades: {final_metrics['total_trades']}")
+            logger.info(f"Win rate: {final_metrics['win_rate']:.2f}")
+
+            # Log action distribution
+            action_distribution = trained_agent.get_action_distribution()
+            logger.info(f"Action distribution for {coin}: {action_distribution}")
+
+            # Plot 3D metrics
+            plot_3d_metrics(range(len(training_metrics['rewards'])), 
+                            training_metrics['rewards'], 
+                            evaluation_metrics['win_rates'], 
+                            training_metrics['losses'], 
+                            coin)
+
+            # Log and plot results
+            logger.info(f"Training completed for {coin}")
+            logger.info(f"Final metrics for {coin}:")
+            logger.info(f"Reward: {training_metrics['rewards'][-1]:.2f}")
+            logger.info(f"Loss: {training_metrics['losses'][-1]:.6f}")
+            logger.info(f"Win Rate: {evaluation_metrics['win_rates'][-1]:.2f}")
+            logger.info(f"Sharpe Ratio: {evaluation_metrics['sharpe_ratios'][-1]:.2f}")
+            logger.info(f"Max Drawdown: {evaluation_metrics['max_drawdowns'][-1]:.2f}")
+            logger.info(f"Profit Factor: {evaluation_metrics['profit_factors'][-1]:.2f}")
+
+            # Create 3D plot for the entire training process
+            plot_3d_metrics(range(len(training_metrics['rewards'])), 
+                            training_metrics['rewards'], 
+                            evaluation_metrics['win_rates'], 
+                            training_metrics['losses'], 
+                            coin)
+
+        except Exception as e:
+            logger.error(f"An error occurred while processing {coin}: {e}")
+            logger.error("Continuing with the next coin...")
+
+    logger.info("Training and evaluation completed for all coins.")
+
