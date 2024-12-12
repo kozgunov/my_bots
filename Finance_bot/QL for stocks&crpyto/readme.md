@@ -1,4 +1,4 @@
-# Crypto Trading Bot with Deep Q-Learning (PyTorch)
+# Crypto Trading Bot with Deep Q-Learning (In progress...)
 
 This project implements a cryptocurrency trading bot using Deep Q-Learning with PyTorch. The bot is designed to make trading decisions on 10-minute cryptocurrency data, considering technical indicators and market trends. It also includes a Telegram bot interface for user interaction and real-time notifications.
 
