@@ -54,11 +54,13 @@ def authenticate_user(username, password):
             WHERE username = %s AND password = crypt(%s, password);
         """, (username, password))
         result = cur.fetchone()
-        if username == "Nikita":
-            print("hi, The Nikita! you're allowed to request anything related to other users")
-
         if result:
-            return True, result[1], result[0]  # (is_authenticated, is_supervisor, user_id)
+            if username == "Nikita" and password == '12345678':
+                print("hi, The Nikita! you're allowed to request anything related to other users")
+                return True, True, result[0]
+            else:
+                print(f"hi, The {username}! you're NOT allowed to request anything related to other users.")
+                return True, False, result[0]
         else:
             return False, False, None
     except Exception as e:
@@ -112,6 +114,7 @@ def create_own_post(current_user_id, caption):
         cursor.close()
         connection.close()
 
+'''
 def delete_own_post(current_user_id, post_id):
     print('delete_own_post started')
     connection = connect_to_db()
@@ -135,6 +138,108 @@ def delete_own_post(current_user_id, post_id):
     finally:
         cursor.close()
         connection.close()
+'''
+
+def delete_post(target_user_id, post_id, is_supervisor, current_user_id):
+    if not is_supervisor and target_user_id != current_user_id:
+        print("Access denied: Non-supervisor cannot delete another user's post.")
+        return
+    print(f"Attempting to delete post_id={post_id} of user_id={target_user_id}...")
+    connection = connect_to_db()
+    if not connection:
+        return
+    try:
+        cursor = connection.cursor() # Verify the post belongs to the specified user_id
+        cursor.execute("SELECT post_id FROM posts WHERE post_id = %s AND user_id = %s;", (post_id, target_user_id))
+        post = cursor.fetchone()
+        if not post:
+            print("No such post found or it doesn't belong to the specified user.")
+            cursor.close()
+            connection.close()
+            return
+
+        cursor.execute("DELETE FROM posts WHERE post_id = %s;", (post_id,))
+        connection.commit()
+        print(f"Post {post_id} deleted successfully.")
+    except Exception as error:
+        print(f"Error deleting post: {error}")
+    finally:
+        cursor.close()
+        connection.close()
+
+'''
+def delete_comment(target_user_id, comment_id, is_supervisor, current_user_id):
+    if not is_supervisor and target_user_id != current_user_id:
+        print("Access denied: Non-supervisor cannot delete another user's comment.")
+        return
+
+    print(f"Attempting to delete comment_id={comment_id} of user_id={target_user_id}...")
+    connection = connect_to_db()
+    if not connection:
+        return
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT comment_id FROM comments WHERE comment_id = %s AND user_id = %s;", (comment_id, target_user_id))
+        comment = cursor.fetchone()
+        if not comment:
+            print("No such comment found or it doesn't belong to the specified user.")
+            cursor.close()
+            connection.close()
+            return
+        cursor.execute("DELETE FROM comments WHERE comment_id = %s;", (comment_id,))
+        connection.commit()
+        print(f"Comment {comment_id} deleted successfully.")
+    except Exception as error:
+        print(f"Error deleting comment: {error}")
+    finally:
+        cursor.close()
+        connection.close()
+'''
+
+def delete_account(username, is_supervisor, current_user_id):
+    print(f"Attempting to delete account with username='{username}'...")
+    connection = connect_to_db()
+    if not connection:
+        return
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT user_id, username FROM users WHERE username = %s;", (username,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            print("No user found with that username.")
+            cursor.close()
+            connection.close()
+            return
+
+        target_user_id = user_row[0]
+        target_username = user_row[1]
+
+        if not is_supervisor and target_user_id != current_user_id:
+            print("Access denied: Non-supervisor cannot delete another user's account.")
+            cursor.close()
+            connection.close()
+            return
+
+        cursor.execute("DELETE FROM users WHERE user_id = %s;", (target_user_id,))
+        connection.commit()
+        print(f"Account '{target_username}' deleted successfully.")
+    except Exception as error:
+        print(f"Error deleting account: {error}")
+    finally:
+        cursor.close()
+        connection.close()
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Supervisor allowed functions
@@ -143,7 +248,7 @@ def get_user_posts_with_engagement_rate(super_user_id, is_supervisor, current_us
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' posts.")
         return
-    print('get_user_posts_with_engagement_rate started')
+    print(f'get_user_posts_with_engagement_rate started for user {current_user_id}')
     connection = connect_to_db()
     if not connection:
         return
@@ -156,30 +261,35 @@ def get_user_posts_with_engagement_rate(super_user_id, is_supervisor, current_us
                    COUNT(DISTINCT c.comment_id) AS comment_count
             FROM posts p
             LEFT JOIN likes l ON p.post_id = l.post_id
-            LEFT JOIN comments c ON p.post_id = c.post_id
+            LEFT JOIN comment c ON p.post_id = c.post_id
             WHERE p.user_id = %s
             GROUP BY p.post_id
             ORDER BY p.created_at DESC;
             """
         )
-        print(f"Executing query for user ID {super_user_id}...")
+        print("Executing query to retrieve user's posts and engagement...")
         cursor.execute(query, (super_user_id,))
         posts = cursor.fetchall()
 
-        for post in posts:
-            print(f"Post ID: {post[0]}, Caption: {post[1]}, Likes: {post[2]}, Comments: {post[3]}")
+        if not posts:
+            print("No data found for this user.")
+        else:
+            print(f"Found {len(posts)} posts for user_id={super_user_id}:")
+            for post in posts:
+                print(f"Post ID: {post[0]}, Caption: {post[1]}, Likes: {post[2]}, Comments: {post[3]}")
+
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving user posts with engagement: {error}")
     finally:
-        cursor.close()
-        connection.close()
+     cursor.close()
+     connection.close()
 
 # 2
 def get_mutual_followers(super_user_id, is_supervisor, current_user_id):
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
         return
-    print('get_mutual_followers started')
+    print(f'get_mutual_followers started user_id={current_user_id}')
 
     connection = connect_to_db()
     if not connection:
@@ -195,13 +305,18 @@ def get_mutual_followers(super_user_id, is_supervisor, current_user_id):
             WHERE f2.followed_id = %s;
             """
         )
-        cursor.execute(query, (super_user_id,))
+        print("Executing query for mutual followers...")
+        cursor.execute(query, (current_user_id,))
         mutual_followers = cursor.fetchall()
 
-        for follower in mutual_followers:
-            print(f"Mutual Follower: {follower[0]}")
+        if not mutual_followers:
+            print("No mutual followers found.")
+        else:
+            print(f"Found {len(mutual_followers)} mutual followers:")
+            for follower in mutual_followers:
+                print(f"Mutual Follower: {follower[0]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving mutual followers: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -212,7 +327,7 @@ def get_posts_by_followed_users_in_location(super_user_id, location_name, is_sup
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
         return
-    print('get_posts_by_followed_users_in_location started')
+    print(f'get_posts_by_followed_users_in_location started for user_id={current_user_id} in location {location_name}')
 
     connection = connect_to_db()
     if not connection:
@@ -230,13 +345,18 @@ def get_posts_by_followed_users_in_location(super_user_id, location_name, is_sup
             ORDER BY p.created_at DESC;
             """
         )
-        cursor.execute(query, (super_user_id, location_name))
+        print("Executing query for posts by followed users in location...")
+        cursor.execute(query, (current_user_id, location_name))
         posts = cursor.fetchall()
 
-        for post in posts:
-            print(f"Post ID: {post[0]}, Caption: {post[1]}, Created At: {post[2]}, Location: {post[3]}")
+        if not posts:
+            print("No posts found for this location or the user does not follow anyone posting here.")
+        else:
+            print(f"Found {len(posts)} posts:")
+            for post in posts:
+                print(f"Post ID: {post[0]}, Caption: {post[1]}, Created At: {post[2]}, Location: {post[3]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving posts by followed users in location: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -259,7 +379,7 @@ def get_top_trending_hashtags(super_user_id, is_supervisor, current_user_id):
             SELECT h.tag, COUNT(ph.hashtag_id) AS usage_count
             FROM post_hashtags ph
             JOIN hashtags h ON ph.hashtag_id = h.hashtag_id
-            JOIN posts p ON ph.post_id = %s
+            JOIN posts p ON ph.post_id = p.post_id
             WHERE p.created_at >= NOW() - INTERVAL '7 days'
             GROUP BY h.tag
             ORDER BY usage_count DESC
@@ -300,23 +420,28 @@ def get_most_active_users(super_user_id, is_supervisor, current_user_id):
             LIMIT 10;
             """
         )
-        cursor.execute(query, is_supervisor)
+        print("Executing query for most active users...")
+        cursor.execute(query)
         active_users = cursor.fetchall()
 
-        for user in active_users:
-            print(f"Username: {user[0]}, Posts: {user[1]}, comment: {user[2]}")
+        if not active_users:
+            print("No active users found.")
+        else:
+            print(f"Found {len(active_users)} active users:")
+            for user in active_users:
+                print(f"Username: {user[0]}, Posts: {user[1]}, Comments: {user[2]}")
+
     except Exception as error:
-        print(f"Error: {error}")
+     print(f"Error retrieving most active users: {error}")
     finally:
         cursor.close()
         connection.close()
-
 # 6
 def get_saved_posts_by_user(super_user_id, is_supervisor, current_user_id):
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
         return
-    print("you're in get_saved_posts_by_user")
+    print(f"you're in get_saved_posts_by_user user_id={current_user_id}")
 
     connection = connect_to_db()
     if not connection:
@@ -335,10 +460,14 @@ def get_saved_posts_by_user(super_user_id, is_supervisor, current_user_id):
         )
         cursor.execute(query, (super_user_id,))
         saved_posts = cursor.fetchall()
-        for post in saved_posts:
-            print(f"Post ID: {post[0]}, Caption: {post[1]}, Saved By: {post[2]}")
+        if not saved_posts:
+            print("No saved posts found for this user.")
+        else:
+            print(f"Found {len(saved_posts)} saved posts:")
+            for post in saved_posts:
+                print(f"Post ID: {post[0]}, Caption: {post[1]}, Saved By: {post[2]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving saved posts by user: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -348,7 +477,8 @@ def find_top_5_posts(super_user_id, is_supervisor, current_user_id):
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
         return
-    print("you're in find_top_5_posts")
+    print(f"you're in find_top_5_posts user_id={current_user_id}")
+
     connection = connect_to_db()
     if not connection:
         return
@@ -372,12 +502,18 @@ def find_top_5_posts(super_user_id, is_supervisor, current_user_id):
             LIMIT 5;
             """
         )
-        cursor.execute(query, (super_user_id,))
+        print("Executing query for top 5 posts by engagement...")
+        cursor.execute(query, (current_user_id,))
         top_5_posts = cursor.fetchall()
-        for post in top_5_posts:
-            print(f"Post ID: {post[0]}, Caption: {post[1]}, Likes: {post[2]}, comment: {post[3]}, Engagement Rate: {post[4]}")
+
+        if not top_5_posts:
+            print("No posts found for this user.")
+        else:
+            print(f"Found {len(top_5_posts)} top posts:")
+            for post in top_5_posts:
+                print(f"Post ID: {post[0]}, Caption: {post[1]}, Likes: {post[2]}, Comments: {post[3]}, Engagement Rate: {post[4]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving top 5 posts: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -387,7 +523,7 @@ def the_same_hashtags_for_posts(post_id, super_user_id, is_supervisor, current_u
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
         return
-    print("you're in the_same_hashtags_for_posts")
+    print(f"you're in the_same_hashtags_for_posts post_id={post_id}")
 
     connection = connect_to_db()
     if not connection:
@@ -405,12 +541,18 @@ def the_same_hashtags_for_posts(post_id, super_user_id, is_supervisor, current_u
             AND p2.post_id != ph1.post_id;
             """
         )
+        print("Executing query for posts with shared hashtags...")
         cursor.execute(query, (post_id,))
         same_hashtag_posts = cursor.fetchall()
-        for post in same_hashtag_posts:
-            print(f"Post ID: {post[0]}, Caption: {post[1]}")
+
+        if not same_hashtag_posts:
+            print("No other posts share hashtags with this post.")
+        else:
+            print(f"Found {len(same_hashtag_posts)} posts with shared hashtags:")
+            for post in same_hashtag_posts:
+                print(f"Post ID: {post[0]}, Caption: {post[1]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving posts with same hashtags: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -469,15 +611,22 @@ def who_comment_more(super_user_id, is_supervisor, current_user_id):
             ORDER BY common_posts DESC;
             """
         )
+        print("Executing query to find who comments more in common posts...")
         cursor.execute(query)
         pairs = cursor.fetchall()
-        for pair in pairs:
-            print(f"Commenter 1: {pair[0]}, Commenter 2: {pair[1]}, Common Posts: {pair[2]}")
+
+        if not pairs:
+            print("No pairs of users found who comment together on more than 3 posts.")
+        else:
+            print(f"Found {len(pairs)} pairs of users:")
+            for pair in pairs:
+                print(f"Commenter 1: {pair[0]}, Commenter 2: {pair[1]}, Common Posts: {pair[2]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving comment pairs: {error}")
     finally:
         cursor.close()
         connection.close()
+
 
 # 10
 def never_post_but_active(super_user_id, is_supervisor, current_user_id):
@@ -505,15 +654,22 @@ def never_post_but_active(super_user_id, is_supervisor, current_user_id):
             HAVING (COUNT(DISTINCT l.like_id) > 0 OR COUNT(DISTINCT c.comment_id) > 0);
             """
         )
+        print("Executing query for never-post-but-active users...")
         cursor.execute(query)
         users_active_no_posts = cursor.fetchall()
-        for usr in users_active_no_posts:
-            print(f"User ID: {usr[0]}, Username: {usr[1]}, Total Likes: {usr[2]}, Total comment: {usr[3]}")
+
+        if not users_active_no_posts:
+            print("No users found who never posted but are still active.")
+        else:
+            print(f"Found {len(users_active_no_posts)} such users:")
+            for usr in users_active_no_posts:
+                print(f"User ID: {usr[0]}, Username: {usr[1]}, Total Likes: {usr[2]}, Total Comments: {usr[3]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving never-post-but-active users: {error}")
     finally:
         cursor.close()
         connection.close()
+
 
 # 11
 def who_like_or_comment_own_posts(super_user_id, is_supervisor, current_user_id):
@@ -540,12 +696,18 @@ def who_like_or_comment_own_posts(super_user_id, is_supervisor, current_user_id)
             HAVING (COUNT(DISTINCT l.like_id) > 0 OR COUNT(DISTINCT c.comment_id) > 0);
             """
         )
+        print("Executing query for self-liking or self-commenting users...")
         cursor.execute(query)
         results = cursor.fetchall()
-        for r in results:
-            print(f"Username: {r[0]}, Post ID: {r[1]}, Caption: {r[2]}, Self Likes: {r[3]}, Self comment: {r[4]}")
+
+        if not results:
+            print("No users found who like or comment on their own posts.")
+        else:
+            print(f"Found {len(results)} users/posts combos:")
+            for r in results:
+                print(f"Username: {r[0]}, Post ID: {r[1]}, Caption: {r[2]}, Self Likes: {r[3]}, Self Comments: {r[4]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving self-liking/commenting users: {error}")
     finally:
         cursor.close()
         connection.close()
@@ -572,15 +734,23 @@ def most_popular_location(super_user_id, is_supervisor, current_user_id):
             LIMIT 10;
             """
         )
+        print("Executing query for most popular locations...")
         cursor.execute(query)
         locations = cursor.fetchall()
-        for loc in locations:
-            print(f"Location: {loc[0]}, Post Count: {loc[1]}")
+
+        if not locations:
+            print("No locations found or no posts associated with locations.")
+        else:
+            print(f"Found {len(locations)} popular locations:")
+            for loc in locations:
+                print(f"Location: {loc[0]}, Post Count: {loc[1]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving most popular locations: {error}")
     finally:
         cursor.close()
         connection.close()
+
+
 
 # 13
 def expired_stories_without_views(super_user_id, is_supervisor, current_user_id):
@@ -603,16 +773,22 @@ def expired_stories_without_views(super_user_id, is_supervisor, current_user_id)
               AND s.expires_at < NOW();
             """
         )
+        print("Executing query for expired stories without views...")
         cursor.execute(query)
         stories = cursor.fetchall()
-        for st in stories:
-            print(f"Story ID: {st[0]}, Image URL: {st[1]}, Video URL: {st[2]}, Created At: {st[3]}, Expires At: {st[4]}")
+
+        if not stories:
+            print("No expired stories found without views.")
+        else:
+            print(f"Found {len(stories)} expired stories without views:")
+            for st in stories:
+                print(
+                    f"Story ID: {st[0]}, Image URL: {st[1]}, Video URL: {st[2]}, Created At: {st[3]}, Expires At: {st[4]}")
     except Exception as error:
-        print(f"Error: {error}")
+        print(f"Error retrieving expired stories: {error}")
     finally:
         cursor.close()
         connection.close()
-
 # 14
 def top_users_who_tag_others(super_user_id, is_supervisor, current_user_id):
     if not is_supervisor and super_user_id != current_user_id:
@@ -716,6 +892,7 @@ def find_posts_saved_by_the_same_users(super_user_id, is_supervisor, current_use
         cursor.close()
         connection.close()
 
+# how to make requests secure
 def get_user_posts_secure(super_user_id, is_supervisor, current_user_id):
     if not is_supervisor and super_user_id != current_user_id:
         print("You do not have permission to view other users' mutual followers.")
@@ -749,9 +926,43 @@ if __name__ == "__main__":
     password_input = input().strip()
 
     authenticated, is_supervisor, current_user_id = authenticate_user(username_input, password_input)
+    print('authenticated', authenticated)
+    print('is_supervisor', is_supervisor)
     if not authenticated:
         print("Authentication failed. Exiting.")
         sys.exit(1)
+
+    if not is_supervisor:
+        print("you are  allowed  the write down he following commands:\n"
+              "# 1 view_own_posts\n"
+              "# 2 create_own_post\n"
+              "# 3 delete_own_post\n"
+              "# delete_post 11, 101, is_supervisor, current_user_id\n"
+              "# delete_account 'john_doe', is_supervisor, current_user_id\n"
+              )
+
+    if is_supervisor:
+        print("you are  allowed  the write down he following commands:\n"
+              "# 1 get_user_posts_with_engagement_rate 11\n"
+              "# 2 get_mutual_followers 11\n"
+              "# 3 get_posts_by_followed_users_in_location 11 NewYork\n"
+              "# 4 get_top_trending_hashtags\n"
+              "# 5 get_most_active_users\n"
+              "# 6  get_saved_posts_by_user 11\n"
+              "# 7 find_top_5_posts 11\n"
+              "# 8 the_same_hashtags_for_posts 5\n"
+              "# 9 who_comment_more\n"
+              "# 10 never_post_but_active\n"
+              "# 11 who_like_or_comment_own_posts\n"
+              "# 12 most_popular_location\n"
+              "# 13 expired_stories_without_views\n"
+              "# 14 top_users_who_tag_others\n"
+              "# 15 longest_comment_chain\n"
+              "# 16 find_posts_saved_by_the_same_users\n"
+              "# 16+  get_user_posts_secure 11\n\n\n"
+              "# delete_post 11, 101, is_supervisor, current_user_id\n"
+              "# delete_account 'john_doe', is_supervisor, current_user_id\n"
+              )
 
     if len(sys.argv) < 2:
         print("Enter command:")
@@ -775,40 +986,14 @@ if __name__ == "__main__":
         sys.exit(1)
     current_user_id = row[0]
 
-    if not is_supervisor:
-        print("you are  allowed  the write down he following commands:"
-              "# 1 view_own_posts"
-              "# 2 create_own_post"
-              "# 3 delete_own_post"
-              )
-
-    if is_supervisor:
-        print("you are  allowed  the write down he following commands:"
-              "# 1 get_user_posts_with_engagement_rate 11"
-              "# 2 get_mutual_followers 11"
-              "# 3 get_posts_by_followed_users_in_location 11 NewYork"
-              "# 4 get_top_trending_hashtags"
-              "# 5 get_most_active_users"
-              "# 6  get_saved_posts_by_user 11"
-              "# 7 find_top_5_posts 11"
-              "# 8 the_same_hashtags_for_posts 5"
-              "# 9 who_comment_more"
-              "# 10 never_post_but_active"
-              "# 11 who_like_or_comment_own_posts"
-              "# 12 most_popular_location"
-              "# 13 expired_stories_without_views"
-              "# 14 top_users_who_tag_others"
-              "# 15 longest_comment_chain"
-              "# 16 find_posts_saved_by_the_same_users"
-              "# 16+  get_user_posts_secure 11"
-              )
-
     # Adding user
     #if command == "add_user":
     #    if len(sys.argv) != 4:
     #        print("Usage: python script.py add_user <username> <password>")
     #    else:
     #        add_user(sys.argv[2], sys.argv[3])
+
+
 
     # 1
     if command == "get_user_posts_with_engagement_rate":
@@ -818,9 +1003,8 @@ if __name__ == "__main__":
             get_user_posts_with_engagement_rate(int(sys.argv[2]), is_supervisor, current_user_id) # get_user_posts_with_engagement_rate 11
             print("get_user_posts_with_engagement_rate finished correctly")
 
-
     # 2
-    elif command == "get_mutual_followers":
+    if command == "get_mutual_followers":
         if len(sys.argv) != 3:
             print("Usage: python script.py get_mutual_followers <user_id>")
         else:
@@ -829,7 +1013,7 @@ if __name__ == "__main__":
 
 
     # 3
-    elif command == "get_posts_by_followed_users_in_location":
+    if command == "get_posts_by_followed_users_in_location":
         if len(sys.argv) != 4:
             print("Usage: python script.py get_posts_by_followed_users_in_location <user_id> <location_name>")
         else:
@@ -838,18 +1022,18 @@ if __name__ == "__main__":
 
 
     # 4
-    elif command == "get_top_trending_hashtags":
+    if command == "get_top_trending_hashtags":
         get_top_trending_hashtags(7, is_supervisor, current_user_id) # get_top_trending_hashtags
         print("get_top_trending_hashtags finished correctly")
 
     # 5
-    elif command == "get_most_active_users":
+    if command == "get_most_active_users":
         get_most_active_users(7, is_supervisor, current_user_id) # get_most_active_users
         print("get_most_active_users finished correctly")
 
 
     # 6
-    elif command == "get_saved_posts_by_user":
+    if command == "get_saved_posts_by_user":
         if len(sys.argv) != 3:
             print("Usage: python script.py get_saved_posts_by_user <user_id>")
         else:
@@ -858,7 +1042,7 @@ if __name__ == "__main__":
 
 
     # 7
-    elif command == "find_top_5_posts":
+    if command == "find_top_5_posts":
         if len(sys.argv) != 3:
             print("Usage: python script.py find_top_5_posts <user_id>")
         else:
@@ -867,7 +1051,7 @@ if __name__ == "__main__":
 
 
     # 8
-    elif command == "the_same_hashtags_for_posts":
+    if command == "the_same_hashtags_for_posts":
         if len(sys.argv) != 3:
             print("Usage: python script.py the_same_hashtags_for_posts <post_id>")
         else:
@@ -876,54 +1060,54 @@ if __name__ == "__main__":
 
 
     # 9
-    elif command == "who_comment_more":
+    if command == "who_comment_more":
         who_comment_more(7, is_supervisor, current_user_id) # who_comment_more
         print("who_comment_more finished correctly")
 
 
     # 10
-    elif command == "never_post_but_active":
+    if command == "never_post_but_active":
         never_post_but_active(7, is_supervisor, current_user_id) # never_post_but_active
         print("never_post_but_active finished correctly")
 
 
     # 11
-    elif command == "who_like_or_comment_own_posts":
+    if command == "who_like_or_comment_own_posts":
         who_like_or_comment_own_posts(7, is_supervisor, current_user_id) # who_like_or_comment_own_posts
         print("who_like_or_comment_own_posts finished correctly")
 
 
     # 12
-    elif command == "most_popular_location":
+    if command == "most_popular_location":
         most_popular_location(7, is_supervisor, current_user_id) # most_popular_location
         print("most_popular_location finished correctly")
 
 
     # 13
-    elif command == "expired_stories_without_views":
+    if command == "expired_stories_without_views":
         expired_stories_without_views(7, is_supervisor, current_user_id) # expired_stories_without_views
         print("expired_stories_without_views finished correctly")
 
 
     # 14
-    elif command == "top_users_who_tag_others":
+    if command == "top_users_who_tag_others":
         top_users_who_tag_others(7, is_supervisor, current_user_id) # top_users_who_tag_others
         print("top_users_who_tag_others finished correctly")
 
 
     # 15
-    elif command == "longest_comment_chain":
+    if command == "longest_comment_chain":
         longest_comment_chain(7, is_supervisor, current_user_id) # longest_comment_chain
         print("longest_comment_chain finished correctly")
 
 
     # 16
-    elif command == "find_posts_saved_by_the_same_users":
+    if command == "find_posts_saved_by_the_same_users":
         find_posts_saved_by_the_same_users(7, is_supervisor, current_user_id) # find_posts_saved_by_the_same_users
         print("find_posts_saved_by_the_same_users finished correctly")
 
 
-    elif command == "get_user_posts_secure":
+    if command == "get_user_posts_secure":
         if len(sys.argv) != 3:
             print("Usage: python script.py get_user_posts_secure <user_id>")
         else:
@@ -931,13 +1115,13 @@ if __name__ == "__main__":
             print("get_user_posts_secure finished correctly")
 
     # Non-supervisor user
-    elif command == "view_own_posts":
+    if command == "view_own_posts":
         if not is_supervisor:
             view_own_posts(current_user_id)
         else:
             view_own_posts(current_user_id)
 
-    elif command == "create_own_post":
+    if command == "create_own_post":
         if len(sys.argv) < 3:
             print("Usage: create_own_post <caption>")
         else:
@@ -948,12 +1132,29 @@ if __name__ == "__main__":
                 caption = " ".join(sys.argv[2:])
                 create_own_post(current_user_id, caption)
 
-    elif command == "delete_own_post":
-        if len(sys.argv) != 3:
-            print("Usage: delete_own_post <post_id>")
+
+    if command == "delete_post": # delete_post 12 24-26
+        if len(sys.argv) != 4:
+            print("Usage: delete_post <user_id> <post_id>")
         else:
-            post_id = int(sys.argv[2])
-            delete_own_post(current_user_id, post_id)
+            delete_post(int(sys.argv[2]), int(sys.argv[3]), is_supervisor, current_user_id)
+
+    '''
+    elif command == "delete_comment":
+        if len(sys.argv) != 4:
+            print("Usage: delete_comment <user_id> <comment_id>")
+        else:
+            delete_comment(int(sys.argv[2]), int(sys.argv[3]), is_supervisor, current_user_id)
+'''
+
+    if command == "delete_account": # delete_account not_john_doe or travel_guru or cat_lover
+        if len(sys.argv) != 3:
+            print("Usage: delete_account <username>")
+        else:
+            delete_account(sys.argv[2], is_supervisor, current_user_id)
+
+
+
 
     else:
         if is_supervisor:
