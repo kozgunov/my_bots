@@ -5,27 +5,20 @@ import requests
 import os
 from config import BINANCE_API_KEY
 
-# Set up logging
+# logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Binance API endpoint
+# binance API endpoint
 BASE_URL = "https://api.binance.com/api/v3"
 
-# List of 10 popular coins
 COINS = ['BTC', 'ETH', 'BNB', 'ADA', 'XRP', 'DOT', 'UNI', 'LTC', 'LINK', 'SOL']
-
-# Timeframe
 INTERVAL = "15m"
-
-# Number of data points to fetch (approximately 4 years of 15-minute data)
 LIMIT = 365 * 24 * 4 * 4  # 4 years * 365 days * 24 hours * 4 (15-minute intervals per hour)
 
-# Get the path to the desktop
 DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
 
-# Create the training_results folder if it doesn't exist
 os.makedirs(RESULTS_PATH, exist_ok=True)
 
 def fetch_and_process_data(symbol):
@@ -36,34 +29,34 @@ def fetch_and_process_data(symbol):
         end_time = int(datetime.now().timestamp() * 1000)
         
         while len(all_data) < LIMIT:
-            # Construct the API request URL
+            # API request URL
             endpoint = f"{BASE_URL}/klines"
             params = {
                 "symbol": f"{symbol}USDT",
                 "interval": INTERVAL,
-                "limit": 1000,  # Binance API limit
+                "limit": 1000,  # API limit
                 "endTime": end_time
             }
             headers = {
                 "X-MBX-APIKEY": BINANCE_API_KEY
             }
             
-            # Make the API request
+            # the API request
             response = requests.get(endpoint, params=params, headers=headers)
-            response.raise_for_status()  # Raise an exception for bad responses
+            response.raise_for_status()  # raise exception for bad responses
             klines = response.json()
             
             if not klines:
                 break
             
             all_data = klines + all_data
-            end_time = klines[0][0] - 1  # Set end time to the oldest timestamp minus 1 millisecond
+            end_time = klines[0][0] - 1  # end time to the oldest timestamp minus 1 millisecond
         
         processed_data = []
         for kline in all_data[:LIMIT]:
             timestamp, open_price, high, low, close, volume = kline[:6]
             
-            # Convert timestamp to readable format
+            # convert timestamp to readable format
             date = datetime.fromtimestamp(int(timestamp) / 1000).strftime('%Y-%m-%d %H:%M:%S')
             
             processed_data.append({
@@ -113,13 +106,13 @@ def main():
         if coin_data:
             all_data.extend(coin_data)
             
-            # Save individual coin data to desktop
+            # individual coin data to desktop
             save_to_json(coin_data, f"{coin}_data.json")
             logger.info(f"Saved {len(coin_data)} records for {coin}")
         else:
             logger.warning(f"Skipping {coin} due to data retrieval failure")
     
-    # Save all data combined to desktop
+    # Save 
     save_to_json(all_data, "all_coins_data.json")
     logger.info(f"Saved {len(all_data)} total records for all coins")
 
