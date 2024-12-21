@@ -6,7 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import logging
 
-# Set up logging
+# setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,6 @@ class ImprovedQLearningAgent:
             self.model.train()
             action = np.argmax(act_values.cpu().data.numpy())
         
-        # Update action counts
         self.action_counts[action] += 1
         
         return action
@@ -148,7 +147,7 @@ class ImprovedQLearningAgent:
         self.optimizer.zero_grad()
         loss.backward()
         
-        # Calculate gradient norm
+        # calculate gradient norm
         total_norm = 0
         for p in self.model.parameters():
             param_norm = p.grad.data.norm(2)
@@ -273,4 +272,3 @@ class ImprovedQLearningAgent:
             logger.error(f"Error calculating Omega Ratio: {e}")
             return None
 
-    # ... (rest of the class remains the same)
