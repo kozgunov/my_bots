@@ -1,3 +1,5 @@
+# (without generating data)
+
 import numpy as np
 import matplotlib.pyplot as plt
 from environment import TradingEnvironment
