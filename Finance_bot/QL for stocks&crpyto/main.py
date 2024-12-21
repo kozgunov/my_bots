@@ -11,7 +11,7 @@ import numpy as np
 import os
 import logging
 
-# Set up logging
+# setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -55,38 +55,38 @@ def predict_crypto_market(message):
     try:
         bot.send_message(message.chat.id, "Preparing to make a prediction. This may take a moment...")
 
-        # Load and prepare data
+        # load&prepare data
         df, scaler = prepare_data('binance', SYMBOL, timeframe=TIMEFRAME, limit=DATA_LIMIT)
         
         if df is None:
             bot.send_message(message.chat.id, "Failed to load data. Please try again later.")
             return
 
-        # Create sequences
+        # create sequences
         seq_length = 24  # 24 hours of data
         X, y = create_sequences(df, seq_length)
         y = y[:, df.columns.get_loc('close')]
 
-        # Use the last sequence for prediction
+        # use the last sequence for prediction
         last_sequence = X[-1:]
 
-        # Create environment and agent
+        # create environment and agent
         env = TradingEnvironment(y[-60:], initial_balance=INITIAL_BALANCE, fee=TRADING_FEE)  # Use last 60 points for visualization
         agent = ImprovedQLearningAgent(state_size=X.shape[1] * X.shape[2] + 2, action_size=3)
 
-        # Load the trained model
+        # load the trained model
         if os.path.exists("best_model.pth"):
             agent.load("best_model.pth")
         else:
             bot.send_message(message.chat.id, "Trained model not found. Please train the model first.")
             return
 
-        # Make prediction
+        # make prediction
         state = env.reset()
         action = agent.get_action(last_sequence)
         prediction = "Buy" if action == 1 else "Sell" if action == 2 else "Hold"
 
-        # Plot 1-hour graph of Bitcoin
+        # 1-hour graph of Bitcoin
         plt.figure(figsize=(10, 6))
         plt.plot(df.index[-60:], df['close'][-60:])
         plt.title("Bitcoin Price (Last 60 Hours)")
@@ -99,17 +99,17 @@ def predict_crypto_market(message):
         plt.savefig(img_buffer, format='png')
         img_buffer.seek(0)
         
-        # Send the plot
+        # send the plot
         bot.send_photo(message.chat.id, img_buffer)
 
-        # Send prediction
+        # send prediction
         bot.send_message(message.chat.id, f"Prediction: {prediction}")
 
-        # Get latest news
+        # latest news
         news = get_latest_news("Bitcoin")
         bot.send_message(message.chat.id, news, parse_mode='Markdown')
 
-        # Get general indicator data
+        # general indicator data
         crypto_info = get_crypto_info("BTC")
         bot.send_message(message.chat.id, crypto_info, parse_mode='Markdown')
 
@@ -161,7 +161,7 @@ def start_bot():
 
 def main():
     try:
-        # Start the Telegram bot in a separate thread
+        # start the Telegram bot in a separate thread
         bot_thread = threading.Thread(target=start_bot)
         bot_thread.start()
 
