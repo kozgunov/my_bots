@@ -14,15 +14,13 @@ import shap
 import json
 import time
 
-# Set up logging
+# setup
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Get the path to the desktop
 DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
 
-# Create the training_results folder if it doesn't exist
 os.makedirs(RESULTS_PATH, exist_ok=True)
 
 def load_json_data(file_path, chunk_size=100000):
@@ -45,7 +43,7 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
     losses = []
     epsilons = []
     no_improvement_count = 0
-    training_losses = []  # New list to store all training losses
+    training_losses = []  # new list to store all training losses
 
     action_counts = {0: 0, 1: 0, 2: 0, 3: 0}  # Hold, Buy, Sell, Risk-free
     profits = []
@@ -53,14 +51,14 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
 
     logger.info(f"Starting training for {episodes} episodes")
 
-    # Metrics that influence training
+    # metrics that influence training
     training_metrics = {
         'rewards': [],
         'losses': [],
         'epsilons': []
     }
     
-    # Metrics that don't directly influence training
+    # metrics that don't directly influence training
     evaluation_metrics = {
         'win_rates': [],
         'sharpe_ratios': [],
@@ -114,17 +112,17 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
             loss = agent.replay(episode * 10000 + episode_steps)
             if loss is not None:
                 episode_losses.append(loss)
-                training_losses.append(loss)  # Add loss to training_losses
+                training_losses.append(loss)  # add loss to training_losses
 
             action_counts[action] += 1
             episode_actions.append(action)
             episode_portfolio_values.append(info['balance'] + info['position'] * info['current_price'])
             episode_volumes.append(info['current_volume'])  # Assume 'current_volume' is provided in info
 
-        # Decay epsilon after each episode
+        # decay epsilon after each episode
         agent.decay_epsilon()
 
-        # Calculate episode metrics
+        # calculate episode metrics
         weighted_win_rate = total_profit / episode_trades if episode_trades > 0 else 0
         win_rate = episode_wins / episode_trades if episode_trades > 0 else 0
         
@@ -135,14 +133,14 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         avg_loss = np.mean(episode_losses) if episode_losses else float('inf')
         losses.append(avg_loss)
 
-        # Log episode summary
+        # log episode summary
         logger.info(f"Episode {episode+1}/{episodes} - Time: {time.time() - start_time:.2f}s, "
                     f"Reward: {episode_reward:.2f}, Steps: {episode_steps}, "
                     f"Trades: {episode_trades}, Win Rate: {win_rate:.2f}, "
                     f"Weighted Win Rate: {weighted_win_rate:.2f}, "
                     f"Avg Loss: {avg_loss:.6f}, Epsilon: {agent.epsilon:.4f}")
 
-        # Check for improvement and save best model
+        # check for improvement and save best model
         if episode_reward > best_score:
             best_score = episode_reward
             agent.save(os.path.join(RESULTS_PATH, f"model_best_score_{episode}.pth"))
@@ -156,38 +154,38 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         else:
             no_improvement_count += 1
 
-        # Save checkpoint and plot results
+        # save checkpoint and plot results
         if episode % checkpoint_interval == 0 or episode == episodes - 1:
             agent.save(os.path.join(RESULTS_PATH, f"model_checkpoint_{episode}.pth"))
             plot_training_results(scores, steps_per_episode, weighted_win_rates, losses, epsilons, episode)
             plot_episode_results(episode_actions, episode_portfolio_values, episode_volumes, episode)
             logger.info(f"Checkpoint saved and plots generated at episode {episode+1}")
 
-        # Early stopping
+        # early stopping
         if no_improvement_count >= patience:
             logger.info(f"Stopping early due to no improvement in loss for {patience} episodes")
             break
 
         logger.debug(f"Episode {episode+1} completed. Total reward: {episode_reward}")
 
-        # Update training metrics
+        # update training metrics
         training_metrics['rewards'].append(episode_reward)
         training_metrics['losses'].append(avg_loss)
         training_metrics['epsilons'].append(agent.epsilon)
         
-        # Calculate and update evaluation metrics
+        # calculate and update evaluation metrics
         evaluation_metrics['win_rates'].append(win_rate)
         evaluation_metrics['sharpe_ratios'].append(calculate_sharpe_ratio(profits))
         evaluation_metrics['max_drawdowns'].append(calculate_max_drawdown(episode_portfolio_values))
         evaluation_metrics['profit_factors'].append(calculate_profit_factor(profits))
 
-    # Create 3D plot
+    #  3D plot
     plot_3d_metrics(range(episodes), training_metrics['rewards'], evaluation_metrics['win_rates'], training_metrics['losses'], 'All_Episodes')
     
-    # Plot hyperparameters
+    #  hyperparameters
     plot_hyperparameters(hyperparameters)
     
-    # Plot training and evaluation metrics
+    #  training and evaluation metrics
     plot_metrics(training_metrics, 'Training_Metrics')
     plot_metrics(evaluation_metrics, 'Evaluation_Metrics')
     
@@ -211,28 +209,28 @@ def evaluate_agent(env, agent, episodes=100):
 def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
     plt.figure(figsize=(20, 15))
     
-    # Plot scores
+    #  scores
     plt.subplot(2, 2, 1)
     plt.plot(scores)
     plt.title('Score over episodes', fontsize=16)
     plt.xlabel('Episode', fontsize=12)
     plt.ylabel('Score', fontsize=12)
 
-    # Plot steps per episode
+    #  steps per episode
     plt.subplot(2, 2, 2)
     plt.plot(steps)
     plt.title('Steps per episode', fontsize=16)
     plt.xlabel('Episode', fontsize=12)
     plt.ylabel('Steps', fontsize=12)
 
-    # Plot weighted win rates
+    #  weighted win rates
     plt.subplot(2, 2, 3)
     plt.plot(win_rates)
     plt.title('Weighted Win Rate', fontsize=16)
     plt.xlabel('Episode', fontsize=12)
     plt.ylabel('Win Rate', fontsize=12)
 
-    # Plot losses
+    #  losses
     if losses:
         plt.subplot(2, 2, 4)
         plt.plot(losses)
@@ -258,22 +256,22 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
 
 def explain_model(model, env):
     try:
-        # Create a batch of initial states
+        # batch of initial states
         initial_states = [env.reset() for _ in range(100)]
         
-        # Convert the list of states to a numpy array
+        # convert the list of states to a numpy array
         initial_states_array = np.array(initial_states)
         
-        # Convert numpy array to torch tensor
+        # convert numpy array to torch tensor
         initial_states_tensor = torch.FloatTensor(initial_states_array).to(model.device)
         
-        # Create SHAP explainer
+        # create SHAP explainer
         explainer = shap.DeepExplainer(model, initial_states_tensor)
         
-        # Generate SHAP values
+        # generate SHAP values
         shap_values = explainer.shap_values(initial_states_tensor[0:1])
         
-        # Create and save summary plot
+        # create and save summary plot
         shap.summary_plot(shap_values, initial_states_tensor[0:1], 
                           feature_names=['Balance', 'Position', 'Price', 'Volume', 'Profit/Loss'],
                           show=False)
@@ -321,7 +319,7 @@ def plot_loss_graphs(training_losses, test_losses, coin):
 def plot_episode_results(actions, portfolio_values, volumes, episode):
     plt.figure(figsize=(20, 15))
     
-    # Portfolio Value
+    # portfolio Value
     plt.subplot(3, 1, 1)
     sns.lineplot(x=range(len(portfolio_values)), y=portfolio_values, color='blue')
     plt.title(f'Portfolio Value - Episode {episode}', fontsize=16)
@@ -333,7 +331,7 @@ def plot_episode_results(actions, portfolio_values, volumes, episode):
                  (max_value_step, portfolio_values[max_value_step]), 
                  xytext=(5, 5), textcoords='offset points')
 
-    # Actions
+    # actions
     plt.subplot(3, 1, 2)
     action_labels = ['Hold', 'Buy', 'Sell', 'Risk-free']
     colors = ['gray', 'green', 'red', 'blue']
@@ -363,14 +361,14 @@ def plot_episode_results(actions, portfolio_values, volumes, episode):
     plt.close()
 
 def plot_additional_metrics(profits, portfolio_values):
-    # Calculate metrics
+    # calculate metrics
     sharpe_ratio = calculate_sharpe_ratio(profits)
     avg_profit_per_trade = np.mean(profits)
     max_drawdown = calculate_max_drawdown(portfolio_values)
     profit_factor = calculate_profit_factor(profits)
     risk_factor = max_drawdown / (np.std(profits) + 1e-10)  # Adding small value to avoid division by zero
 
-    # Plot metrics
+    # metrics
     metrics = ['Sharpe Ratio', 'Avg Profit/Trade', 'Max Drawdown', 'Profit Factor', 'Risk Factor']
     values = [sharpe_ratio, avg_profit_per_trade, max_drawdown, profit_factor, risk_factor]
 
@@ -383,7 +381,7 @@ def plot_additional_metrics(profits, portfolio_values):
     plt.savefig(os.path.join(RESULTS_PATH, "trading_metrics.png"))
     plt.close()
 
-    # Log metrics
+    # log metrics
     logger.info(f"Sharpe Ratio: {sharpe_ratio:.2f}")
     logger.info(f"Average Profit per Trade: {avg_profit_per_trade:.2f}")
     logger.info(f"Maximum Drawdown: {max_drawdown:.2f}")
@@ -398,7 +396,7 @@ def plot_3d_metrics(episodes, rewards, win_rates, losses, coin):
     fig = plt.figure(figsize=(15, 10))
     ax = fig.add_subplot(111, projection='3d')
     
-    # Ensure all inputs are numpy arrays and have the same length
+    # ensure all inputs are numpy arrays and have the same length
     episodes = np.array(episodes)
     rewards = np.array(rewards)
     win_rates = np.array(win_rates)
@@ -451,7 +449,7 @@ if __name__ == "__main__":
         logger.error(f"File not found: {all_coins_file}")
         exit(1)
 
-    # Load all data at once
+    # load all data at once
     all_data = load_all_coins_data(all_coins_file)
     logger.info(f"Loaded {len(all_data)} total records for all coins")
 
@@ -459,7 +457,7 @@ if __name__ == "__main__":
         try:
             logger.info(f"Processing data for {coin}")
             
-            # Filter data for the current coin
+            # filter data for the current coin
             coin_data = all_data[all_data['coin'] == coin]
             
             if len(coin_data) == 0:
@@ -468,14 +466,14 @@ if __name__ == "__main__":
 
             logger.info(f"Processing {len(coin_data)} records for {coin}")
 
-            # Sort data by timestamp
+            # sort data by timestamp
             coin_data = coin_data.sort_values('timestamp')
 
-            # Split data
+            # split data
             train_data, temp_data = train_test_split(coin_data, test_size=0.4, shuffle=False)
             val_data, test_data = train_test_split(temp_data, test_size=0.5, shuffle=False)
 
-            # Create environments
+            # create environments
             train_env = TradingEnvironment(train_data.to_dict('records'))
             val_env = TradingEnvironment(val_data.to_dict('records'))
             test_env = TradingEnvironment(test_data.to_dict('records'))
