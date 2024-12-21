@@ -11,11 +11,11 @@ import os
 import torch
 import logging
 
-# Set up logging
+# setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Suppress specific warnings
+# suppress specific warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
 
@@ -230,21 +230,21 @@ def plot_shap_values(model, sample_data, feature_names, results_path, episode):
         explainer = shap.DeepExplainer(model, sample_tensor)
         shap_values = explainer.shap_values(sample_tensor)
 
-        # Summary plot
+        # summary plot
         plt.figure(figsize=(12, 8))
         shap.summary_plot(shap_values, sample_data, feature_names=feature_names, show=False)
         plt.tight_layout()
         plt.savefig(os.path.join(results_path, f"shap_summary_{episode}.png"))
         plt.close()
 
-        # Bar plot
+        # bar plot
         plt.figure(figsize=(12, 8))
         shap.summary_plot(shap_values, sample_data, feature_names=feature_names, plot_type="bar", show=False)
         plt.tight_layout()
         plt.savefig(os.path.join(results_path, f"shap_bar_{episode}.png"))
         plt.close()
 
-        # Force plot for a single prediction
+        # force plot for a single prediction
         force_plot = shap.force_plot(explainer.expected_value[0], shap_values[0][0], sample_data[0], feature_names=feature_names, matplotlib=True, show=False)
         plt.tight_layout()
         plt.savefig(os.path.join(results_path, f"shap_force_{episode}.png"))
