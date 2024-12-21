@@ -5,7 +5,7 @@ import sys
 print('program started')
 
 
-# Connect to database
+# Connection
 def connect_to_db():
     print('connect_to_db started')
     try:
@@ -47,7 +47,7 @@ def authenticate_user(username, password):
         return False, False, None
     try:
         cur = conn.cursor()
-        # Check password using crypt
+        # check password using crypt
         cur.execute("""
             SELECT user_id, is_supervisor
             FROM users
@@ -71,7 +71,7 @@ def authenticate_user(username, password):
         conn.close()
 
 
-# Non-supervisor allowed functions (also allowed for supervisor)
+# Non-Supervisor allowed functions (also allowed for supervisor)
 def view_own_posts(current_user_id):
     print('view_own_posts started')
     connection = connect_to_db()
@@ -455,7 +455,7 @@ def the_same_hashtags_for_posts(post_id, super_user_id, is_supervisor, current_u
         connection.close()
 
 
-'''
+
 # 8
 def the_same_hashtags_for_posts(post_id):
     connection = connect_to_db()
@@ -483,7 +483,7 @@ def the_same_hashtags_for_posts(post_id):
     finally:
         cursor.close()
         connection.close()
-'''
+
 
 
 # 9
@@ -878,13 +878,6 @@ if __name__ == "__main__":
         print("Error: could not find current user in DataBase.")
         sys.exit(1)
     current_user_id = row[0]
-
-    # Adding user
-    #if command == "add_user":
-    #    if len(sys.argv) != 4:
-    #        print("Usage: python script.py add_user <username> <password>")
-    #    else:
-    #        add_user(sys.argv[2], sys.argv[3])
 
 
 
