@@ -5,7 +5,7 @@ import sys
 print('program started')
 
 
-# Connect to database
+# Connection to db
 def connect_to_db():
     print('connect_to_db started')
     try:
@@ -114,31 +114,7 @@ def create_own_post(current_user_id, caption):
         cursor.close()
         connection.close()
 
-'''
-def delete_own_post(current_user_id, post_id):
-    print('delete_own_post started')
-    connection = connect_to_db()
-    if not connection:
-        return
-    try:
-        cursor = connection.cursor()
-        cursor.execute("""
-            DELETE FROM posts
-            WHERE post_id = %s AND user_id = %s
-            RETURNING post_id;
-        """, (post_id, current_user_id))
-        deleted = cursor.fetchone()
-        connection.commit()
-        if deleted:
-            print(f"Post {post_id} deleted successfully.")
-        else:
-            print("No post found or you don't have permission to delete this post.")
-    except Exception as error:
-        print("Error:", error)
-    finally:
-        cursor.close()
-        connection.close()
-'''
+
 
 def delete_post(target_user_id, post_id, is_supervisor, current_user_id):
     if not is_supervisor and target_user_id != current_user_id:
@@ -167,7 +143,7 @@ def delete_post(target_user_id, post_id, is_supervisor, current_user_id):
         cursor.close()
         connection.close()
 
-'''
+
 def delete_comment(target_user_id, comment_id, is_supervisor, current_user_id):
     if not is_supervisor and target_user_id != current_user_id:
         print("Access denied: Non-supervisor cannot delete another user's comment.")
@@ -194,7 +170,7 @@ def delete_comment(target_user_id, comment_id, is_supervisor, current_user_id):
     finally:
         cursor.close()
         connection.close()
-'''
+
 
 def delete_account(username, is_supervisor, current_user_id):
     print(f"Attempting to delete account with username='{username}'...")
@@ -558,7 +534,7 @@ def the_same_hashtags_for_posts(post_id, super_user_id, is_supervisor, current_u
         connection.close()
 
 
-'''
+
 # 8
 def the_same_hashtags_for_posts(post_id):
     connection = connect_to_db()
@@ -586,7 +562,7 @@ def the_same_hashtags_for_posts(post_id):
     finally:
         cursor.close()
         connection.close()
-'''
+
 
 
 # 9
