@@ -7,7 +7,7 @@ import requests
 from config import TOKEN_NEWS_API, SYMBOL_MAPPING
 import warnings
 
-# Suppress specific warnings
+# suppress specific warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in divide")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
 
@@ -59,24 +59,24 @@ def add_technical_indicators(df):
     Returns:
     pandas.DataFrame: DataFrame with added technical indicators
     """
-    # Simple Moving Average (SMA)
+    #  SMA
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['SMA_50'] = df['close'].rolling(window=50).mean()
 
-    # Relative Strength Index (RSI)
+    # RSI
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # Moving Average Convergence Divergence (MACD)
+    # MACD
     exp1 = df['close'].ewm(span=12, adjust=False).mean()
     exp2 = df['close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp1 - exp2
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-    # Average True Range (ATR)
+    # ATR
     high_low = df['high'] - df['low']
     high_close = np.abs(df['high'] - df['close'].shift())
     low_close = np.abs(df['low'] - df['close'].shift())
@@ -90,21 +90,12 @@ def add_technical_indicators(df):
     df['Bollinger_Upper'] = df['Bollinger_Middle'] + (df['Bollinger_Std'] * 2)
     df['Bollinger_Lower'] = df['Bollinger_Middle'] - (df['Bollinger_Std'] * 2)
 
-    # Returns
+    # return
     df['Returns'] = df['close'].pct_change()
 
     return df
 
 def normalize_data(df):
-    """
-    Normalize the data using MinMaxScaler.
-    
-    Args:
-    df (pandas.DataFrame): DataFrame with OHLCV and technical indicator data
-    
-    Returns:
-    tuple: (normalized_df, scaler)
-    """
     scaler = MinMaxScaler()
     columns_to_normalize = ['open', 'high', 'low', 'close', 'volume', 'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal', 'ATR', 'Bollinger_Upper', 'Bollinger_Middle', 'Bollinger_Lower', 'Returns']
     df[columns_to_normalize] = scaler.fit_transform(df[columns_to_normalize])
@@ -115,17 +106,17 @@ def prepare_data(df):
         print("Failed to load data or empty DataFrame")
         return None, None
 
-    # Ensure all necessary columns are present
+    # ensure all necessary columns are present
     required_columns = ['open', 'high', 'low', 'close', 'volume']
     if not all(col in df.columns for col in required_columns):
         print("Missing required columns in the DataFrame")
         return None, None
 
-    # Convert columns to numeric, coercing errors to NaN
+    # convert columns to numeric, coercing errors to NaN
     for col in required_columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Add technical indicators
+    # add technical indicators
     df['sma_10'] = df['close'].rolling(window=10).mean()
     df['sma_30'] = df['close'].rolling(window=30).mean()
     df['rsi'] = calculate_rsi(df['close'].values)
@@ -137,10 +128,10 @@ def prepare_data(df):
     df['bollinger_upper'] = upper
     df['bollinger_lower'] = lower
 
-    # Remove any rows with NaN values
+    # remove any rows with NaN values
     df.dropna(inplace=True)
 
-    # Check for infinite values
+    # check for infinite values
     numeric_columns = df.select_dtypes(include=[np.number]).columns
     df[numeric_columns] = df[numeric_columns].replace([np.inf, -np.inf], np.nan)
     df.dropna(inplace=True)
@@ -149,7 +140,7 @@ def prepare_data(df):
         print("No valid data left after preprocessing")
         return None, None
 
-    # Normalize the data
+    # normalize the data
     scaler = MinMaxScaler()
     df[numeric_columns] = scaler.fit_transform(df[numeric_columns])
     
@@ -181,8 +172,8 @@ def get_crypto_info(asset):
     else:
         return "Sorry, I couldn't find information about that asset.\n"
 
-    # Implement the logic to fetch crypto info
-    # This is a placeholder, implement the actual API calls
+    # implement the logic to fetch crypto info
+    # placeholder, implement the actual API calls
     return f"Crypto info for {symbol}\n"
 
 def get_latest_news(asset):
@@ -215,19 +206,19 @@ def calculate_rsi(prices, window=14):
     gain = np.maximum(delta, 0)
     loss = -np.minimum(delta, 0)
     
-    # Use exponential moving average for more stability
+    # exponential moving average for more stability
     avg_gain = pd.Series(gain).ewm(com=window-1, adjust=False).mean().values
     avg_loss = pd.Series(loss).ewm(com=window-1, adjust=False).mean().values
     
-    # Pad the beginning to match the original length
+    # pad the beginning to match the original length
     avg_gain = np.pad(avg_gain, (1, 0), mode='constant', constant_values=np.nan)
     avg_loss = np.pad(avg_loss, (1, 0), mode='constant', constant_values=np.nan)
     
-    # Handle division by zero and invalid values
+    # handle division by zero and invalid values
     rs = np.divide(avg_gain, avg_loss, out=np.ones_like(avg_gain), where=avg_loss!=0)
     rsi = 100 - (100 / (1 + rs))
     
-    # Replace infinity, NaN, and out-of-bounds values
+    # replace infinity, NaN, and out-of-bounds values
     rsi = np.clip(rsi, 0, 100)
     rsi = np.nan_to_num(rsi, nan=50.0)
     
