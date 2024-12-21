@@ -16,15 +16,13 @@ import shap
 import json
 import time
 
-# Set up logging
+# setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Get the path to the desktop
 DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
 
-# Create the training_results folder if it doesn't exist
 os.makedirs(RESULTS_PATH, exist_ok=True)
 
 def load_json_data(file_path, chunk_size=100000):
@@ -76,7 +74,7 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
             if loss is not None:
                 episode_losses.append(loss)
 
-        # Calculate episode metrics
+        #  episode metrics
         weighted_win_rate = episode_wins / episode_trades if episode_trades > 0 else 0
         scores.append(episode_reward)
         steps_per_episode.append(episode_steps)
@@ -85,13 +83,13 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         avg_loss = np.mean(episode_losses) if episode_losses else float('inf')
         losses.append(avg_loss)
 
-        # Log episode summary
+        # log episode summary
         logger.info(f"Episode {episode+1}/{episodes} - Time: {time.time() - start_time:.2f}s, "
                     f"Reward: {episode_reward:.2f}, Steps: {episode_steps}, "
                     f"Trades: {episode_trades}, Win Rate: {weighted_win_rate:.2f}, "
                     f"Avg Loss: {avg_loss:.6f}, Epsilon: {agent.epsilon:.4f}")
 
-        # Check for improvement and save best model
+        # check for improvement and save best model
         if episode_reward > best_score:
             best_score = episode_reward
             agent.save(os.path.join(RESULTS_PATH, f"model_best_score_{episode}.pth"))
@@ -105,27 +103,27 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         else:
             no_improvement_count += 1
 
-        # Save checkpoint and plot results
+        # save checkpoint and plot results
         if episode % checkpoint_interval == 0 or episode == episodes - 1:
             agent.save(os.path.join(RESULTS_PATH, f"model_checkpoint_{episode}.pth"))
             plot_training_results(scores, steps_per_episode, weighted_win_rates, losses, epsilons, episode)
             logger.info(f"Checkpoint saved and plots generated at episode {episode+1}")
 
-        # Early stopping
+        # early stopping
         if no_improvement_count >= patience:
             logger.info(f"Stopping early due to no improvement in loss for {patience} episodes")
             break
 
-    # Final summary
+    # final summary
     logger.info("Training completed")
     logger.info(f"Best score: {best_score:.2f}")
     logger.info(f"Best loss: {best_loss:.6f}")
 
-    # Save the final model
+    # save the final model
     agent.save(os.path.join(RESULTS_PATH, f"model_final.pth"))
     logger.info("Final model saved")
 
-    # Generate final plots
+    # generate final plots
     plot_training_results(scores, steps_per_episode, weighted_win_rates, losses, epsilons, 'final')
 
     return agent
@@ -145,7 +143,7 @@ def evaluate_agent(env, agent, episodes=100):
     return np.mean(scores), np.std(scores)
 
 def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
-    # Plot scores
+    #  scores
     plt.figure(figsize=(10, 5))
     plt.plot(scores)
     plt.title('Score over episodes')
@@ -154,7 +152,7 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
     plt.savefig(os.path.join(RESULTS_PATH, f"scores_episode_{episode}.png"))
     plt.close()
 
-    # Plot steps per episode
+    #  steps per episode
     plt.figure(figsize=(10, 5))
     plt.plot(steps)
     plt.title('Steps per episode')
@@ -163,7 +161,7 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
     plt.savefig(os.path.join(RESULTS_PATH, f"steps_episode_{episode}.png"))
     plt.close()
 
-    # Plot weighted win rates
+    #  weighted win rates
     plt.figure(figsize=(10, 5))
     plt.plot(win_rates)
     plt.title('Weighted Win Rate')
@@ -172,7 +170,7 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
     plt.savefig(os.path.join(RESULTS_PATH, f"win_rates_episode_{episode}.png"))
     plt.close()
 
-    # Plot losses
+    #  losses
     if losses:
         plt.figure(figsize=(10, 5))
         plt.plot(losses)
@@ -182,7 +180,7 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
         plt.savefig(os.path.join(RESULTS_PATH, f"losses_episode_{episode}.png"))
         plt.close()
 
-    # Plot epsilon decay
+    #  epsilon decay
     plt.figure(figsize=(10, 5))
     plt.plot(epsilons)
     plt.title('Epsilon Decay')
@@ -193,22 +191,22 @@ def plot_training_results(scores, steps, win_rates, losses, epsilons, episode):
 
 def explain_model(model, env):
     try:
-        # Create a batch of initial states
+        # create a batch of initial states
         initial_states = [env.reset() for _ in range(100)]
         
-        # Convert the list of states to a numpy array
+        # convert the list of states to a numpy array
         initial_states_array = np.array(initial_states)
         
-        # Convert numpy array to torch tensor
+        # convert numpy array to torch tensor
         initial_states_tensor = torch.FloatTensor(initial_states_array).to(model.device)
         
-        # Create SHAP explainer
+        # create SHAP explainer
         explainer = shap.DeepExplainer(model, initial_states_tensor)
         
-        # Generate SHAP values
+        # generate SHAP values
         shap_values = explainer.shap_values(initial_states_tensor[0:1])
         
-        # Create and save summary plot
+        # create and save summary plot
         shap.summary_plot(shap_values, initial_states_tensor[0:1], 
                           feature_names=['Balance', 'Position', 'Price', 'Volume', 'Profit/Loss'],
                           show=False)
@@ -232,14 +230,14 @@ if __name__ == "__main__":
         logger.error(f"File not found: {all_coins_file}")
         exit(1)
 
-    # Load all data at once
+    # load all data at once
     all_data = load_all_coins_data(all_coins_file)
     logger.info(f"Loaded {len(all_data)} total records for all coins")
 
     for coin in ['BTC', 'ETH', 'BNB', 'ADA', 'XRP', 'DOT', 'UNI', 'LTC', 'LINK', 'SOL']:
         logger.info(f"Processing data for {coin}")
         
-        # Filter data for the current coin
+        # filter data for the current coin
         coin_data = all_data[all_data['coin'] == coin]
         
         if len(coin_data) == 0:
@@ -248,35 +246,35 @@ if __name__ == "__main__":
 
         logger.info(f"Processing {len(coin_data)} records for {coin}")
 
-        # Sort data by timestamp
+        # sort data by timestamp
         coin_data = coin_data.sort_values('timestamp')
 
-        # Split data
+        # split data
         train_data, temp_data = train_test_split(coin_data, test_size=0.4, shuffle=False)
         val_data, test_data = train_test_split(temp_data, test_size=0.5, shuffle=False)
 
-        # Create environments
+        # create environments
         train_env = TradingEnvironment(train_data.to_dict('records'))
         val_env = TradingEnvironment(val_data.to_dict('records'))
         test_env = TradingEnvironment(test_data.to_dict('records'))
 
-        # Initialize and train agent
+        # initialize and train agent
         state_size = train_env._get_state().shape[0]
         action_size = 3  # hold, buy, sell
         agent = ImprovedQLearningAgent(state_size, action_size)
         trained_agent = train_agent(train_env, agent, episodes=200, batch_size=64)
 
-        # Evaluate agent
+        # evaluate agent
         val_score, val_std = evaluate_agent(val_env, trained_agent)
         logger.info(f"Validation Score for {coin}: {val_score:.2f} ± {val_std:.2f}")
 
         test_score, test_std = evaluate_agent(test_env, trained_agent)
         logger.info(f"Test Score for {coin}: {test_score:.2f} ± {test_std:.2f}")
 
-        # Save model
+        # save model
         trained_agent.save(os.path.join(RESULTS_PATH, f"model_{coin}.pth"))
 
-        # Explain model
+        # explain model
         explain_model(trained_agent.model, test_env)
 
     logger.info("Training and evaluation completed for all coins.")
