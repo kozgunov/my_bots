@@ -29,7 +29,7 @@ class TradingEnvironment:
             return np.convolve(volumes, np.ones(window), 'valid') / window
         except KeyError:
             print("Warning: 'volume' key not found in data. Using default values.")
-            return np.ones(len(data))  # Return an array of ones as a fallback
+            return np.ones(len(data))  # return array of ones as fallback
 
     def reset(self):
         self.current_step = self.window_size
@@ -60,13 +60,13 @@ class TradingEnvironment:
             trade_made = False
             trade_amount = 0
 
-            # Apply stop loss
+            # stop loss
             if self.position != 0 and abs(current_price - self.entry_price) / self.entry_price >= self.stop_loss:
                 reward = self._close_position(current_price)
                 done = True
 
-            # Action: 0 (hold), 1 (buy), 2 (sell), 3 (risk-free asset)
-            elif action == 1:  # Buy
+            # actions: 0 (hold), 1 (buy), 2 (sell), 3 (risk-free asset)
+            elif action == 1:  # buy
                 if self.balance > 0:
                     max_trade_size = min(self.balance * self.trade_fraction, self.initial_balance * self.position_limit)
                     trade_size = max_trade_size  # The agent decides to use the maximum allowed trade size
@@ -78,7 +78,7 @@ class TradingEnvironment:
                     self.entry_price = (self.entry_price * (self.position - shares_bought) + execution_price * shares_bought) / self.position
                     trade_made = True
                     trade_amount = trade_size
-            elif action == 2:  # Sell
+            elif action == 2:  # sell
                 if self.position > 0:
                     max_sell_fraction = min(self.trade_fraction, 1.0)  # Can't sell more than 100% of position
                     shares_to_sell = self.position * max_sell_fraction
@@ -92,37 +92,37 @@ class TradingEnvironment:
                         self.entry_price = 0
                     trade_made = True
                     trade_amount = trade_size
-            elif action == 3:  # Move to risk-free asset
+            elif action == 3:  # move to risk-free asset
                 amount_to_move = self.balance * self.trade_fraction
                 self.risk_free_asset += amount_to_move
                 self.balance -= amount_to_move
 
-            # Apply market volatility
+            # apply market volatility
             market_move = np.random.normal(0, self.volatility_factor)
             current_price *= (1 + market_move)
 
             # Update risk-free asset
             self.risk_free_asset *= (1 + self.risk_free_rate)
 
-            # Modify the reward calculation
-            if action != 0:  # If not holding
+            # modify the reward calculation
+            if action != 0:  # if not holding
                 self.total_trades += 1
                 if reward > 0:
                     self.winning_trades += 1
                 
-                # Increase reward for making trades
+                # increase reward for making trades
                 reward += 0.1  # Small bonus for taking action
                 
-                # Adjust reward based on win rate
+                # adjust reward based on win rate
                 current_win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
                 reward *= (1 + current_win_rate)  # Amplify reward for higher win rates
 
-            # Apply negative reward fee
+            # negative reward fee
             if reward < 0:
                 fee = abs(reward) * self.negative_fee_factor
                 reward -= fee
 
-            # Apply negative balance fee
+            # negative balance fee
             if self.balance < 0:
                 fee = abs(self.balance) * self.negative_fee_factor
                 reward -= fee
@@ -182,7 +182,7 @@ class TradingEnvironment:
             current_volume = self.data[self.current_step]['volume']
             volume_ratio = current_volume / volume_ma if volume_ma > 0 else 1
 
-            # Add more technical indicators
+            # more technical indicators
             current_price = self.data[self.current_step]['close']
             sma_20 = np.mean([d['close'] for d in self.data[max(0, self.current_step-20):self.current_step]])
             sma_50 = np.mean([d['close'] for d in self.data[max(0, self.current_step-50):self.current_step]])
@@ -197,12 +197,12 @@ class TradingEnvironment:
                 self.winning_trades / max(1, self.total_trades),
                 self.risk_free_asset / self.initial_balance,
                 volume_ratio,
-                (current_price - sma_20) / sma_20,  # Price relative to SMA20
-                (current_price - sma_50) / sma_50,  # Price relative to SMA50
-                rsi / 100,  # Normalized RSI
+                (current_price - sma_20) / sma_20,  # price relative to SMA20
+                (current_price - sma_50) / sma_50,  # price relative to SMA50
+                rsi / 100,  # normalized RSI
                 (macd[-1] - signal[-1]) / current_price,  # MACD histogram
-                (current_price - lower[-1]) / (upper[-1] - lower[-1]),  # Bollinger Band position
-                self.entry_price / current_price if self.position != 0 else 1,  # Current position's performance
+                (current_price - lower[-1]) / (upper[-1] - lower[-1]),  # bollinger Band position
+                self.entry_price / current_price if self.position != 0 else 1,  # current position's performance
             ])
             
             return np.concatenate((state.flatten(), additional_info))
@@ -211,5 +211,5 @@ class TradingEnvironment:
             raise
 
     def _calculate_price_impact(self, trade_size, volume, price):
-        # Simple square-root model for price impact
+        # square-root model for price impact
         return 0.1 * np.sqrt(trade_size / (volume * price))
