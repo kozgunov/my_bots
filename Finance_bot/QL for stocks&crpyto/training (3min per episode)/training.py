@@ -15,20 +15,19 @@ import random
 import sys
 
 
-# Set up logging
+# setup 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Disable debug logging for other modules
+# disable debug logging for other modules
 logging.getLogger("agent").setLevel(logging.INFO)
 logging.getLogger("environment").setLevel(logging.INFO)
 
-# Get the path to the desktop
 DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 TRAINING_RESULTS_PATH = os.path.join(DESKTOP_PATH, "training_results")
 TESTING_RESULTS_PATH = os.path.join(DESKTOP_PATH, "testing_results")
 
-# Create the results folders if they don't exist
+# create the results folders if they don't exist
 os.makedirs(TRAINING_RESULTS_PATH, exist_ok=True)
 os.makedirs(TESTING_RESULTS_PATH, exist_ok=True)
 
@@ -36,38 +35,30 @@ def load_json_data(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
     
-    # Remove timestamps
+    # remove timestamps
     for item in data:
         item.pop('timestamp', None)
     
     return pd.DataFrame(data)
 
 def plot_best_model_results(agent, episode, rewards, epsilons, win_rates, losses):
-    # Create a directory for best model results
     best_model_dir = os.path.join(TRAINING_RESULTS_PATH, f"best_model_episode_{episode}")
     os.makedirs(best_model_dir, exist_ok=True)
 
-    # Plot training results
     plot_training_results(rewards, epsilons, win_rates, episode, save_path=best_model_dir)
-    
-    # Plot 3D metrics
     plot_3d_metrics(rewards, win_rates, losses, episode, save_path=best_model_dir)
-    
-    # Plot individual plots
     plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_path=best_model_dir)
-    
-    # Plot action distribution
     plot_action_distribution(agent, episode, save_path=best_model_dir)
     
-    # Generate and save SHAP plot
+    # generate and save SHAP plot
     try:
-        sample_data = agent.memory.buffer[-100:]  # Use the last 100 experiences
+        sample_data = agent.memory.buffer[-100:]  # apply the last 100 experiences
         states = np.array([exp[0] for exp in sample_data])
         plot_shap_values(agent.model, states, agent.feature_names, best_model_dir, episode)
     except Exception as e:
         logger.error(f"Error in generating SHAP plot for best model: {e}")
 
-    # Add gradient descent plot
+    # add gradient descent plot
     plot_gradient_descent(agent, episode, save_path=best_model_dir)
 
 def plot_action_distribution(agent, episode, save_path):
@@ -87,7 +78,7 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
     all_rewards = []
     all_epsilons = []
     all_win_rates = []
-    all_losses = []  # Keep track of losses for monitoring
+    all_losses = []  # keep track of losses for monitoring
 
     for episode in range(episodes):
         state = env.reset()
@@ -98,7 +89,7 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         episode_wins = 0
         actions = []
         price_data = []
-        episode_losses = []  # Track losses for this episode
+        episode_losses = []  # track losses for this episode
         start_time = time.time()
 
         buy_signals = []
@@ -142,7 +133,7 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
                 logger.error(f"Error during episode {episode} step: {e}")
                 break
 
-        # Calculate win rate and weighted win rate
+        # calculate win rate and weighted win rate
         if episode_trades > 0:
             win_rate = episode_wins / episode_trades
             trade_frequency = episode_trades / episode_steps
@@ -154,9 +145,9 @@ def train_agent(env, agent, episodes, batch_size=64, checkpoint_interval=10, pat
         all_rewards.append(episode_reward)
         all_epsilons.append(agent.epsilon)
         all_win_rates.append(weighted_win_rate)
-        all_losses.append(np.mean(episode_losses) if episode_losses else 0)  # Average loss for the episode
+        all_losses.append(np.mean(episode_losses) if episode_losses else 0)  # average loss for the episode
 
-        # Score is now based only on reward and win rate
+        # score based only on reward and win rate
         score = episode_reward + (weighted_win_rate * 100)
         
         logger.info(f"Episode {episode+1}/{episodes} - Score: {score:.2f}, Reward: {episode_reward:.2f}, "
@@ -249,7 +240,7 @@ def evaluate_agent(env, agent, episodes=100):
                 if reward > 0:
                     episode_wins += 1
                     winning_trades += 1
-                    weighted_win_sum += trade_amount * (reward / trade_amount)  # Weight by ROI
+                    weighted_win_sum += trade_amount * (reward / trade_amount)  # weight by ROI
                 
                 if action == 1:  # Buy
                     buy_trades += 1
@@ -279,7 +270,7 @@ def evaluate_agent(env, agent, episodes=100):
     overall_win_rate = winning_trades / total_trades if total_trades > 0 else 0
     weighted_win_rate = weighted_win_sum / total_trade_amount if total_trade_amount > 0 else 0
 
-    # Calculate additional metrics
+    # calculate additional metrics
     sharpe_ratio = agent.calculate_sharpe_ratio(returns)
     max_drawdown = agent.calculate_max_drawdown(portfolio_values)
     sortino_ratio = agent.calculate_sortino_ratio(returns)
@@ -306,7 +297,6 @@ def evaluate_agent(env, agent, episodes=100):
 def plot_training_results(rewards, epsilons, win_rates, episode, save_path=TRAINING_RESULTS_PATH):
     plt.figure(figsize=(20, 15))
     
-    # Plot rewards over episodes
     plt.subplot(3, 2, 1)
     plt.plot(rewards, label='Rewards', color='b')
     plt.title('Rewards over Episodes')
@@ -314,7 +304,6 @@ def plot_training_results(rewards, epsilons, win_rates, episode, save_path=TRAIN
     plt.ylabel('Reward')
     plt.legend()
 
-    # Plot epsilon over episodes
     plt.subplot(3, 2, 2)
     plt.plot(epsilons, label='Epsilon', color='g')
     plt.title('Epsilon over Episodes')
@@ -322,7 +311,6 @@ def plot_training_results(rewards, epsilons, win_rates, episode, save_path=TRAIN
     plt.ylabel('Epsilon')
     plt.legend()
 
-    # Plot cumulative rewards
     plt.subplot(3, 2, 3)
     cumulative_rewards = np.cumsum(rewards)
     plt.plot(cumulative_rewards, label='Cumulative Rewards', color='m')
@@ -331,14 +319,12 @@ def plot_training_results(rewards, epsilons, win_rates, episode, save_path=TRAIN
     plt.ylabel('Cumulative Reward')
     plt.legend()
 
-    # Plot reward distribution
     plt.subplot(3, 2, 4)
     plt.hist(rewards, bins=20, color='c', alpha=0.7)
     plt.title('Reward Distribution')
     plt.xlabel('Reward')
     plt.ylabel('Frequency')
 
-    # Plot weighted win rate
     plt.subplot(3, 2, 5)
     plt.plot(win_rates, label='Weighted Win Rate', color='y')
     plt.title('Weighted Win Rate over Episodes')
@@ -363,27 +349,27 @@ def plot_3d_metrics(rewards, win_rates, losses, episode, save_path=TRAINING_RESU
 
 def explain_model(model, env):
     try:
-        # Create a batch of initial states
+        # create a batch of initial states
         initial_states = [env.reset() for _ in range(100)]
         
-        # Convert the list of states to a numpy array
+        # convert the list of states to a numpy array
         initial_states_array = np.array(initial_states)
         
-        # Ensure all elements are numeric
+        # ensure all elements are numeric
         if not np.issubdtype(initial_states_array.dtype, np.number):
             logger.warning("Non-numeric data detected in states. Converting to float.")
             initial_states_array = initial_states_array.astype(float)
         
-        # Convert numpy array to torch tensor
+        # convert numpy array to torch tensor
         initial_states_tensor = torch.FloatTensor(initial_states_array).to(model.device)
         
-        # Create SHAP explainer
+        # create SHAP explainer
         explainer = shap.DeepExplainer(model, initial_states_tensor)
         
-        # Generate SHAP values
+        # generate SHAP values
         shap_values = explainer.shap_values(initial_states_tensor[0:1])
         
-        # Create and save summary plot
+        # create and save summary plot
         shap.summary_plot(shap_values, initial_states_tensor[0:1], 
                           feature_names=['Open', 'High', 'Low', 'Close', 'Volume', 'Balance', 'Position', 'Total Trades', 'Win Rate', 'Risk-free Asset', 'Volume Ratio'],
                           show=False)
@@ -396,7 +382,6 @@ def explain_model(model, env):
         logger.info("Skipping SHAP explanation due to error.")
 
 def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_path=TRAINING_RESULTS_PATH):
-    # Plot rewards over episodes
     plt.figure(figsize=(10, 6))
     plt.plot(rewards, label='Rewards', color='b')
     plt.title('Rewards over Episodes')
@@ -406,7 +391,6 @@ def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_pa
     plt.savefig(os.path.join(save_path, f"rewards_{episode}.png"))
     plt.close()
 
-    # Plot epsilon over episodes
     plt.figure(figsize=(10, 6))
     plt.plot(epsilons, label='Epsilon', color='g')
     plt.title('Epsilon over Episodes')
@@ -416,7 +400,6 @@ def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_pa
     plt.savefig(os.path.join(save_path, f"epsilons_{episode}.png"))
     plt.close()
 
-    # Plot cumulative rewards
     plt.figure(figsize=(10, 6))
     cumulative_rewards = np.cumsum(rewards)
     plt.plot(cumulative_rewards, label='Cumulative Rewards', color='m')
@@ -427,7 +410,6 @@ def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_pa
     plt.savefig(os.path.join(save_path, f"cumulative_rewards_{episode}.png"))
     plt.close()
 
-    # Plot reward distribution
     plt.figure(figsize=(10, 6))
     plt.hist(rewards, bins=20, color='c', alpha=0.7)
     plt.title('Reward Distribution')
@@ -436,7 +418,6 @@ def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_pa
     plt.savefig(os.path.join(save_path, f"reward_distribution_{episode}.png"))
     plt.close()
 
-    # Plot weighted win rate
     plt.figure(figsize=(10, 6))
     plt.plot(win_rates, label='Weighted Win Rate', color='y')
     plt.title('Weighted Win Rate over Episodes')
@@ -447,7 +428,6 @@ def plot_individual_plots(rewards, epsilons, win_rates, losses, episode, save_pa
     plt.savefig(os.path.join(save_path, f"win_rates_{episode}.png"))
     plt.close()
 
-    # Plot losses
     plt.figure(figsize=(10, 6))
     plt.plot(losses, label='Loss', color='r')
     plt.title('Loss over Episodes')
@@ -583,28 +563,28 @@ def analyze_shap_values(shap_values, expected_value, feature_names, episode):
 
 if __name__ == "__main__":
     try:
-        # Get all JSON files in the current directory
+        # gather all JSON files in the current directory
         json_files = [f for f in os.listdir('.') if f.endswith('.json')]
         
         if len(json_files) < 3:
             logger.error("Not enough JSON files found. Need at least 3 files.")
             sys.exit(1)
         
-        # Randomly select 2 files for testing
+        # randomly select 2 files for testing  of 10
         test_files = random.sample(json_files, 2)
         train_files = [f for f in json_files if f not in test_files]
 
         logger.info(f"Training files: {train_files}")
         logger.info(f"Testing files: {test_files}")
 
-        # Load and process training data
+        # load&process training data
         train_data = pd.concat([load_json_data(file) for file in train_files])
         logger.info(f"Loaded {len(train_data)} total records for training")
 
-        # Create training environment
+        # create training environment
         train_env = TradingEnvironment(train_data.to_dict('records'), trade_fraction=0.2)  # Add trade_fraction parameter
 
-        # Initialize and train agent
+        # initialize and train agent
         state_size = train_env._get_state().shape[0]
         action_size = 4  # hold, buy, sell, risk-free
         agent = ImprovedQLearningAgent(
@@ -621,16 +601,13 @@ if __name__ == "__main__":
             train_env, agent, episodes=130, batch_size=64
         )
 
-        # Plot final training results
         plot_training_results(all_rewards, all_epsilons, all_win_rates, 'final')
         plot_3d_metrics(all_rewards, all_win_rates, all_losses, 'final')
         plot_individual_plots(all_rewards, all_epsilons, all_win_rates, all_losses, 'final')
         plot_action_distribution(trained_agent, 'final', TRAINING_RESULTS_PATH)
-
-        # Plot training sample
         plot_training_sample(train_data, 'final')
 
-        # Explain model using SHAP
+        # explain model using SHAP
         try:
             sample_data = train_data.sample(n=100).select_dtypes(include=[np.number]).to_numpy()
             feature_names = train_data.select_dtypes(include=[np.number]).columns.tolist()
@@ -639,7 +616,7 @@ if __name__ == "__main__":
             logger.error(f"Error in SHAP explanation: {e}")
             logger.info("Skipping SHAP explanation due to error.")
 
-        # Evaluate agent on test data
+        # evaluate agent on test data
         for test_file in test_files:
             test_data = load_json_data(test_file)
             logger.info(f"Evaluating on {test_file} with {len(test_data)} records")
@@ -662,7 +639,7 @@ if __name__ == "__main__":
             logger.info(f"  Calmar Ratio: {test_metrics['calmar_ratio']:.4f}")
             logger.info(f"  Omega Ratio: {test_metrics['omega_ratio']:.4f}")
 
-            # Generate predictions
+            # generate predictions
             predictions = []
             state = test_env.reset()
             done = False
@@ -672,13 +649,8 @@ if __name__ == "__main__":
                 predictions.append(test_env.data[test_env.current_step]['close'])
                 state = next_state
 
-            # Plot testing sample with predictions
             plot_testing_sample(test_data, predictions, f'final_{test_file}')
-
-            # Plot correlation
             plot_correlation(test_data, predictions, f'final_{test_file}')
-
-            # Calculate additional metrics
             sharpe_ratio = calculate_sharpe_ratio(test_metrics['mean_reward'], test_metrics['std_reward'])
             max_drawdown = calculate_max_drawdown(predictions)
             profit_factor = calculate_profit_factor(predictions)
@@ -687,7 +659,7 @@ if __name__ == "__main__":
             logger.info(f"  Max Drawdown: {max_drawdown:.4f}")
             logger.info(f"  Profit Factor: {profit_factor:.4f}")
 
-            # Save test metrics to a file
+            # save test metrics to a file
             test_metrics_file = os.path.join(TESTING_RESULTS_PATH, f"test_metrics_{test_file}.txt")
             with open(test_metrics_file, 'w') as f:
                 for key, value in test_metrics.items():
@@ -696,10 +668,10 @@ if __name__ == "__main__":
                 f.write(f"Max Drawdown: {max_drawdown:.4f}\n")
                 f.write(f"Profit Factor: {profit_factor:.4f}\n")
 
-        # Save final model
+        # save final model
         trained_agent.save(os.path.join(TRAINING_RESULTS_PATH, "final_model.pth"))
 
-        # Log final metrics
+        # log final metrics
         final_metrics = trained_agent.calculate_metrics()
         logger.info("Final metrics:")
         logger.info(f"Total trades: {final_metrics['total_trades']}")
